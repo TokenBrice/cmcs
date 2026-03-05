@@ -9,7 +9,7 @@ def test_defaults_when_no_file():
         cfg = load_config(Path(tmpdir))
 
         assert cfg.codex.model == "gpt-5.3-codex"
-        assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access"]
+        assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]
         assert cfg.worktrees.root == "worktrees"
         assert cfg.worktrees.start_point == "master"
         assert cfg.dashboard.port == 4173
@@ -26,7 +26,7 @@ def test_partial_override():
         cfg = load_config(root)
 
         assert cfg.codex.model == "gpt-5.1-codex-mini"
-        assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access"]
+        assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]
         assert cfg.worktrees.root == "worktrees"
         assert cfg.worktrees.start_point == "master"
         assert cfg.dashboard.port == 4173

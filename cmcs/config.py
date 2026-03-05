@@ -11,7 +11,11 @@ import yaml
 class CodexConfig:
     model: str = "gpt-5.3-codex"
     args: list[str] = field(
-        default_factory=lambda: ["--yolo", "exec", "--sandbox", "danger-full-access"]
+        default_factory=lambda: [
+            "--yolo", "exec",
+            "--sandbox", "danger-full-access",
+            "-c", "reasoning_effort=xhigh",
+        ]
     )
 
 

@@ -179,6 +179,8 @@ codex:
     - exec
     - --sandbox
     - danger-full-access
+    - -c
+    - reasoning_effort=xhigh
 
 worktrees:
   root: worktrees
@@ -196,7 +198,7 @@ tickets:
 | Key | Default |
 |---|---|
 | `codex.model` | `gpt-5.3-codex` |
-| `codex.args` | `["--yolo", "exec", "--sandbox", "danger-full-access"]` |
+| `codex.args` | `["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]` |
 | `worktrees.root` | `worktrees` |
 | `worktrees.start_point` | `master` |
 | `dashboard.port` | `4173` |
