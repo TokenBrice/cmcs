@@ -130,6 +130,7 @@ Tickets live in `.cmcs/tickets/` and are discovered with pattern `TICKET-*.md` (
 | `title` | yes (recommended) | string | Short ticket summary. |
 | `agent` | no | string | Worker name. Defaults to `"codex"` when omitted. |
 | `model` | no | string | Per-ticket model override (takes precedence over config default). |
+| `reasoning_effort` | no | string | Per-ticket reasoning effort (`low`, `medium`, `high`, `xhigh`). Overrides config default. |
 | `done` | yes | bool | Completion flag. Flow picks first ticket where `done != true`. |
 
 ### Full ticket example
@@ -158,10 +159,11 @@ Add simple run-status filters to the dashboard.
 - Keep UI dependency-free (vanilla JS only)
 ```
 
-### Model resolution order
+### Resolution order
 
-1. `model` field in ticket frontmatter (if present)
-2. `codex.model` in `.cmcs/config.yml`
+**Model:** ticket `model:` field, then `codex.model` in config.
+
+**Reasoning effort:** ticket `reasoning_effort:` field, then `codex.args` in config (default: `xhigh`).
 
 ## Config
 

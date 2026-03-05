@@ -18,7 +18,8 @@ Place in `.cmcs/tickets/TICKET-001.md` (or `<worktree>/.cmcs/tickets/`):
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"  # optional, overrides config default
+model: "gpt-5.3-codex"           # optional, overrides config default
+reasoning_effort: "high"         # optional: low, medium, high, xhigh (default: xhigh)
 done: false
 ---
 

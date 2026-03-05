@@ -40,6 +40,25 @@ def test_parse_ticket_fields() -> None:
     assert "## Goal" in ticket.body
 
 
+def test_parse_ticket_reasoning_effort() -> None:
+    ticket_content = """---
+title: "Complex task"
+agent: codex
+model: gpt-5.3-codex
+reasoning_effort: high
+done: false
+---
+Body.
+"""
+    ticket = parse_ticket(ticket_content, "TICKET-001.md")
+    assert ticket.reasoning_effort == "high"
+
+
+def test_parse_ticket_no_reasoning_effort() -> None:
+    ticket = parse_ticket(SAMPLE_TICKET, "TICKET-001.md")
+    assert ticket.reasoning_effort is None
+
+
 def test_parse_ticket_no_model() -> None:
     ticket_content = """---
 title: Test

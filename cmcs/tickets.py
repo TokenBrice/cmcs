@@ -19,6 +19,7 @@ class Ticket:
     body: str
     raw: str
     model: Optional[str] = None
+    reasoning_effort: Optional[str] = None
 
 
 _FRONTMATTER_PATTERN = re.compile(
@@ -64,6 +65,7 @@ def parse_ticket(content: str, filename: str) -> Ticket:
         body=body,
         raw=content,
         model=metadata.get("model"),
+        reasoning_effort=metadata.get("reasoning_effort"),
     )
 
 

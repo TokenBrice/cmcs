@@ -89,6 +89,24 @@ def recover_orphans(db: Database) -> List[Dict[str, Any]]:
     return recovered
 
 
+def _build_codex_args(config: CmcsConfig, ticket: Ticket) -> list[str]:
+    """Build codex CLI args, applying per-ticket reasoning_effort override."""
+    args = list(config.codex.args)
+    if ticket.reasoning_effort:
+        filtered: list[str] = []
+        skip_next = False
+        for i, arg in enumerate(args):
+            if skip_next:
+                skip_next = False
+                continue
+            if arg == "-c" and i + 1 < len(args) and args[i + 1].startswith("reasoning_effort="):
+                skip_next = True
+                continue
+            filtered.append(arg)
+        args = filtered + ["-c", f"reasoning_effort={ticket.reasoning_effort}"]
+    return args
+
+
 async def _run_single_ticket(
     ticket: Ticket,
     repo_path: Path,
@@ -105,6 +123,8 @@ async def _run_single_ticket(
     model = ticket.model or config.codex.model
     db.record_event(run_id, ticket.filename, "started", model=model)
 
+    args = _build_codex_args(config, ticket)
+
     log_dir = repo_path / ".cmcs" / "logs" / str(run_id)
     log_dir.mkdir(parents=True, exist_ok=True)
 
@@ -116,7 +136,7 @@ async def _run_single_ticket(
     with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
         process = await asyncio.create_subprocess_exec(
             "codex",
-            *config.codex.args,
+            *args,
             "-m",
             model,
             prompt,

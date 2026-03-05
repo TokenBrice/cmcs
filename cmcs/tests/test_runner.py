@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import os
 
+from cmcs.config import CmcsConfig
 from cmcs.db import Database
-from cmcs.runner import build_prompt, recover_orphans
-from cmcs.tickets import parse_ticket
+from cmcs.runner import _build_codex_args, build_prompt, recover_orphans
+from cmcs.tickets import Ticket, parse_ticket
 
 SAMPLE_TICKET = """---
 title: "Create hello"
@@ -50,6 +51,40 @@ def test_build_prompt_with_previous_progress() -> None:
     assert "Context from the previous ticket:" in prompt
     assert "Created the config file." in prompt
     assert "--- TICKET ---" in prompt
+
+
+def test_build_codex_args_default() -> None:
+    config = CmcsConfig()
+    ticket = Ticket(filename="T.md", title="", agent="codex", done=False, body="", raw="")
+    args = _build_codex_args(config, ticket)
+    assert args == config.codex.args
+    assert "-c" in args
+    assert "reasoning_effort=xhigh" in args
+
+
+def test_build_codex_args_ticket_override() -> None:
+    config = CmcsConfig()
+    ticket = Ticket(
+        filename="T.md", title="", agent="codex", done=False,
+        body="", raw="", reasoning_effort="high",
+    )
+    args = _build_codex_args(config, ticket)
+    # Should have replaced xhigh with high
+    assert "reasoning_effort=high" in args
+    assert "reasoning_effort=xhigh" not in args
+    # Should still have the other args
+    assert "--yolo" in args
+
+
+def test_build_codex_args_no_existing_effort() -> None:
+    from cmcs.config import CodexConfig
+    config = CmcsConfig(codex=CodexConfig(args=["--yolo", "exec"]))
+    ticket = Ticket(
+        filename="T.md", title="", agent="codex", done=False,
+        body="", raw="", reasoning_effort="low",
+    )
+    args = _build_codex_args(config, ticket)
+    assert args == ["--yolo", "exec", "-c", "reasoning_effort=low"]
 
 
 def test_recover_orphans_marks_dead_runs(tmp_path) -> None:
