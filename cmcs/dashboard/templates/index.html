@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>cmcs dashboard</title>
+  <style>
+    :root { --bg:#0b1020; --panel:#121b2f; --panel-border:#1e2b4a; --text:#dce8ff; --muted:#8fa4c8; --green:#2ecc71; --gray:#95a5a6; --red:#e74c3c; --amber:#f39c12; --blue:#56b5ff; }
+    * { box-sizing:border-box; }
+    body { margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at top,#17284c 0%,#0b1020 55%); font-family:"Fira Mono","Cascadia Code",monospace; }
+    .wrap { max-width:1100px; margin:0 auto; padding:24px 18px 42px; }
+    .header { margin-bottom:20px; }
+    h1 { margin:0; font-size:30px; letter-spacing:0.8px; text-transform:lowercase; }
+    .meta { margin-top:8px; color:var(--muted); font-size:13px; }
+    h2 { margin:24px 0 12px; font-size:17px; color:#e5efff; text-transform:uppercase; letter-spacing:0.9px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:12px; }
+    .card { border:1px solid var(--panel-border); border-radius:12px; padding:14px; background:linear-gradient(180deg,#152447 0%,var(--panel) 100%); }
+    .card-top { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+    .name { font-size:15px; color:#f2f7ff; overflow-wrap:anywhere; }
+    .status { display:inline-flex; align-items:center; gap:8px; color:var(--muted); font-size:12px; text-transform:lowercase; }
+    .dot { width:10px; height:10px; border-radius:50%; }
+    .status-running { background:var(--green); }
+    .status-completed { background:var(--gray); }
+    .status-failed,.status-interrupted,.status-stopped { background:var(--red); }
+    .status-default { background:var(--amber); }
+    .kv { display:grid; grid-template-columns:92px 1fr; gap:7px; margin:4px 0; font-size:12px; }
+    .k { color:var(--muted); }
+    .v { overflow-wrap:anywhere; }
+    .events { margin-top:10px; border:1px solid var(--panel-border); border-radius:12px; overflow:hidden; background:var(--panel); }
+    table { width:100%; border-collapse:collapse; font-size:12px; }
+    thead { background:#17284c; }
+    th,td { text-align:left; padding:10px; border-bottom:1px solid var(--panel-border); vertical-align:top; }
+    tbody tr:hover { background:rgba(86,181,255,0.08); }
+    .empty { padding:16px; color:var(--muted); border:1px dashed var(--panel-border); border-radius:10px; background:rgba(18,27,47,0.8); }
+    .event-type { color:var(--blue); text-transform:lowercase; }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <header class="header">
+      <h1>cmcs dashboard</h1>
+      <div class="meta" id="last-refresh">refreshing...</div>
+    </header>
+    <section>
+      <h2>Active Agents</h2>
+      <div id="agents" class="cards"></div>
+    </section>
+    <section>
+      <h2>Recent Events</h2>
+      <div class="events">
+        <table>
+          <thead>
+            <tr>
+              <th>timestamp</th><th>worktree</th><th>ticket</th><th>event</th><th>model</th><th>duration</th>
+            </tr>
+          </thead>
+          <tbody id="event-rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+  <script>
+    const agentsEl = document.getElementById("agents");
+    const eventsEl = document.getElementById("event-rows");
+    const refreshEl = document.getElementById("last-refresh");
+
+    function parseTime(value) {
+      if (!value) return null;
+      const text = value.includes("T") ? value : value.replace(" ", "T") + "Z";
+      const date = new Date(text);
+      return Number.isNaN(date.getTime()) ? null : date;
+    }
+
+    function formatTime(value) {
+      const date = parseTime(value);
+      return date ? date.toLocaleString() : "n/a";
+    }
+
+    function formatDuration(seconds) {
+      return seconds === null || seconds === undefined ? "n/a" : Number(seconds).toFixed(1) + "s";
+    }
+
+    function elapsedForRun(run) {
+      const start = parseTime(run.started_at);
+      if (!start) return "n/a";
+      const end = parseTime(run.finished_at) || new Date();
+      return ((Math.max(0, end.getTime() - start.getTime())) / 1000).toFixed(1) + "s";
+    }
+
+    function statusClass(status) {
+      const known = ["running", "completed", "failed", "interrupted", "stopped"];
+      return known.includes(status) ? "status-" + status : "status-default";
+    }
+
+    function worktreeName(path) {
+      const parts = String(path || "").split(/[\\/]/).filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : String(path || "n/a");
+    }
+
+    function currentTicket(events) {
+      const open = [];
+      const closed = new Set();
+      for (const event of events) {
+        if (event.event === "started") open.push(event.ticket);
+        if (event.event === "completed" || event.event === "failed") closed.add(event.ticket);
+      }
+      for (let i = open.length - 1; i >= 0; i -= 1) {
+        if (!closed.has(open[i])) return open[i];
+      }
+      return events.length ? events[events.length - 1].ticket : "n/a";
+    }
+
+    function currentModel(events) {
+      for (let i = events.length - 1; i >= 0; i -= 1) {
+        if (events[i].model) return events[i].model;
+      }
+      return "n/a";
+    }
+
+    async function fetchJson(url) {
+      const response = await fetch(url, { cache: "no-store" });
+      if (!response.ok) throw new Error(`Request failed: ${url} (${response.status})`);
+      return response.json();
+    }
+
+    function renderAgents(runs, worktreesByPath, eventsByRun) {
+      if (!runs.length) {
+        agentsEl.innerHTML = '<div class="empty">No runs found.</div>';
+        return;
+      }
+
+      agentsEl.innerHTML = [...runs].sort((a, b) => b.id - a.id).map((run) => {
+        const events = eventsByRun[run.id] || [];
+        const branch = worktreesByPath[run.worktree]?.branch || "n/a";
+        return `<article class="card">
+          <div class="card-top"><div class="name">${worktreeName(run.worktree)}</div><div class="status"><span class="dot ${statusClass(run.status)}"></span>${run.status}</div></div>
+          <div class="kv"><div class="k">branch</div><div class="v">${branch}</div></div>
+          <div class="kv"><div class="k">ticket</div><div class="v">${currentTicket(events)}</div></div>
+          <div class="kv"><div class="k">model</div><div class="v">${currentModel(events)}</div></div>
+          <div class="kv"><div class="k">pid</div><div class="v">${run.worker_pid || "n/a"}</div></div>
+          <div class="kv"><div class="k">elapsed</div><div class="v">${elapsedForRun(run)}</div></div>
+        </article>`;
+      }).join("");
+    }
+
+    function renderEvents(runs, eventsByRun) {
+      const worktreeByRunId = Object.fromEntries(runs.map((run) => [run.id, run.worktree]));
+      const allEvents = [];
+      for (const run of runs) {
+        for (const event of eventsByRun[run.id] || []) {
+          allEvents.push({ ...event, worktree: worktreeByRunId[run.id] || "n/a" });
+        }
+      }
+
+      allEvents.sort((a, b) => {
+        const ta = parseTime(a.timestamp)?.getTime() || 0;
+        const tb = parseTime(b.timestamp)?.getTime() || 0;
+        if (tb !== ta) return tb - ta;
+        return (b.id || 0) - (a.id || 0);
+      });
+
+      if (!allEvents.length) {
+        eventsEl.innerHTML = '<tr><td colspan="6" class="empty">No events found.</td></tr>';
+        return;
+      }
+
+      eventsEl.innerHTML = allEvents.map((event) => `<tr>
+        <td>${formatTime(event.timestamp)}</td>
+        <td>${worktreeName(event.worktree)}</td>
+        <td>${event.ticket || "n/a"}</td>
+        <td class="event-type">${event.event || "n/a"}</td>
+        <td>${event.model || "n/a"}</td>
+        <td>${formatDuration(event.duration_s)}</td>
+      </tr>`).join("");
+    }
+
+    async function refresh() {
+      try {
+        const [runs, worktrees] = await Promise.all([fetchJson("/api/runs"), fetchJson("/api/worktrees")]);
+        const eventsByRun = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.id, await fetchJson(`/api/runs/${run.id}/events`)])));
+        const worktreesByPath = Object.fromEntries(worktrees.map((wt) => [wt.path, wt]));
+        renderAgents(runs, worktreesByPath, eventsByRun);
+        renderEvents(runs, eventsByRun);
+        refreshEl.textContent = "updated " + new Date().toLocaleTimeString();
+      } catch (error) {
+        console.error(error);
+        refreshEl.textContent = "refresh failed: " + error.message;
+      }
+    }
+
+    refresh();
+    setInterval(refresh, 5000);
+  </script>
+</body>
+</html>

@@ -1,0 +1,107 @@
+"""Tests for ticket parsing and discovery."""
+
+from cmcs.tickets import discover_tickets, get_previous_progress, parse_ticket
+
+SAMPLE_TICKET = """---
+title: "Add hello world"
+agent: "codex"
+model: "gpt-5.1-codex-mini"
+done: false
+---
+
+## Goal
+Create hello world.
+
+## Task
+1. Add src/hello.py
+"""
+
+DONE_TICKET = """---
+title: "Done ticket"
+agent: "codex"
+done: true
+---
+
+## Goal
+Already done.
+
+## Progress
+- Created the file successfully.
+"""
+
+
+def test_parse_ticket_fields() -> None:
+    ticket = parse_ticket(SAMPLE_TICKET, "TICKET-001.md")
+    assert ticket.filename == "TICKET-001.md"
+    assert ticket.title == "Add hello world"
+    assert ticket.agent == "codex"
+    assert ticket.model == "gpt-5.1-codex-mini"
+    assert ticket.done is False
+    assert "## Goal" in ticket.body
+
+
+def test_parse_ticket_no_model() -> None:
+    ticket_content = """---
+title: Test
+agent: codex
+done: false
+---
+Body.
+"""
+    ticket = parse_ticket(ticket_content, "TICKET-001.md")
+    assert ticket.model is None
+
+
+def test_parse_done_ticket() -> None:
+    ticket = parse_ticket(DONE_TICKET, "TICKET-002.md")
+    assert ticket.done is True
+
+
+def test_discover_tickets_ordering(tmp_path) -> None:
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True)
+    (tickets_dir / "TICKET-002.md").write_text(SAMPLE_TICKET, encoding="utf-8")
+    (tickets_dir / "TICKET-001.md").write_text(DONE_TICKET, encoding="utf-8")
+    (tickets_dir / "TICKET-003.md").write_text(SAMPLE_TICKET, encoding="utf-8")
+
+    tickets = discover_tickets(tickets_dir)
+    assert [ticket.filename for ticket in tickets] == [
+        "TICKET-001.md",
+        "TICKET-002.md",
+        "TICKET-003.md",
+    ]
+
+
+def test_discover_next_undone(tmp_path) -> None:
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True)
+    (tickets_dir / "TICKET-001.md").write_text(DONE_TICKET, encoding="utf-8")
+    (tickets_dir / "TICKET-002.md").write_text(SAMPLE_TICKET, encoding="utf-8")
+
+    tickets = discover_tickets(tickets_dir)
+    undone = [ticket for ticket in tickets if not ticket.done]
+    assert len(undone) == 1
+    assert undone[0].filename == "TICKET-002.md"
+
+
+def test_get_previous_progress(tmp_path) -> None:
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True)
+    (tickets_dir / "TICKET-001.md").write_text(DONE_TICKET, encoding="utf-8")
+    (tickets_dir / "TICKET-002.md").write_text(SAMPLE_TICKET, encoding="utf-8")
+
+    tickets = discover_tickets(tickets_dir)
+    progress = get_previous_progress(tickets, "TICKET-002.md")
+    assert progress is not None
+    assert progress.startswith("## Progress")
+    assert "Created the file successfully" in progress
+
+
+def test_get_previous_progress_first_ticket(tmp_path) -> None:
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True)
+    (tickets_dir / "TICKET-001.md").write_text(SAMPLE_TICKET, encoding="utf-8")
+
+    tickets = discover_tickets(tickets_dir)
+    progress = get_previous_progress(tickets, "TICKET-001.md")
+    assert progress is None
