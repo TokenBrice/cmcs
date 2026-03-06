@@ -1,0 +1,65 @@
+# Configuration
+
+## Config File
+
+Config file path: `.cmcs/config.yml`
+
+Missing keys fall back to defaults, and nested sections are merged recursively.
+
+## Full Config Example
+
+```yaml
+codex:
+  model: gpt-5.3-codex
+  args:
+    - --yolo
+    - exec
+    - --sandbox
+    - danger-full-access
+    - -c
+    - reasoning_effort=xhigh
+
+worktrees:
+  root: worktrees
+  start_point: master
+
+dashboard:
+  port: 4173
+
+tickets:
+  dir: .cmcs/tickets
+```
+
+## Default Values
+
+| Key | Default |
+|---|---|
+| `codex.model` | `gpt-5.3-codex` |
+| `codex.args` | `["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]` |
+| `worktrees.root` | `worktrees` |
+| `worktrees.start_point` | `master` |
+| `dashboard.port` | `4173` |
+| `tickets.dir` | `.cmcs/tickets` |
+
+## Minimal Config Example
+
+```yaml
+codex:
+  model: gpt-5.3-codex
+```
+
+## Ticket Frontmatter Fields
+
+| Field | Required | Type | Meaning |
+|---|---|---|---|
+| `title` | yes (recommended) | string | Short ticket summary. |
+| `agent` | no | string | Worker name. Defaults to `"codex"` when omitted. |
+| `model` | no | string | Per-ticket model override (takes precedence over config default). |
+| `reasoning_effort` | no | string | Per-ticket reasoning effort (`low`, `medium`, `high`, `xhigh`). Overrides config default. |
+| `done` | yes | bool | Completion flag. Flow picks first ticket where `done != true`. |
+
+## Resolution Order
+
+**Model:** ticket `model:` field, then `codex.model` in config.
+
+**Reasoning effort:** ticket `reasoning_effort:` field, then `codex.args` in config (default: `xhigh`).
