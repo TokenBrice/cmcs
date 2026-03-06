@@ -61,6 +61,34 @@ Concrete, runnable checks:
 - `command` exits 0 with expected output
 ```
 
+### Full Ticket Example
+
+Here's a complete ticket showing all fields and sections in use:
+
+```markdown
+---
+title: "Implement dashboard filters"
+agent: "codex"
+model: "gpt-5.1-codex-mini"
+done: false
+---
+
+## Goal
+Add simple run-status filters to the dashboard.
+
+## Task
+1. Add status filter controls in dashboard UI.
+2. Filter runs client-side by selected statuses.
+3. Update tests for filter behavior.
+
+## Acceptance Criteria
+- Running/completed/failed filters work
+- Existing dashboard tests pass
+
+## Notes
+- Keep UI dependency-free (vanilla JS only)
+```
+
 ### Ticket Writing Principles
 
 1. **One concern per ticket.** A ticket should produce a reviewable unit of work.
