@@ -104,3 +104,47 @@ repo (master)
 - Codex is expected to edit files directly to satisfy ticket requirements
 - Ticket completion contract remains explicit: `done: true` + `## Progress`
 - No hidden broker state: ticket files and SQLite records are inspectable
+
+## Dashboard
+
+### Access
+
+```bash
+cmcs dashboard
+```
+
+Open: `http://127.0.0.1:4173` (or your configured `dashboard.port`).
+
+### What It Shows
+
+- Active and historical runs by worktree
+- Run status (`running`, `completed`, `failed`, `interrupted`, `stopped`)
+- Current ticket/model/pid/elapsed time per run
+- Recent event stream (ticket events, timestamps, duration)
+
+### Layout
+
+```text
++----------------------------------------------------------------------------------+
+| cmcs dashboard                                               updated 23:41:12    |
++----------------------------------------------------------------------------------+
+| ACTIVE AGENTS: worktree | status | branch | ticket | model | pid | elapsed      |
+| feature/readme          | running | feature/readme | TICKET-002 | gpt-5.3 | 48291 |
+| feature/tests           | completed | feature/tests | TICKET-004 | gpt-5.1 | 48104 |
+|                                                                                  |
+| RECENT EVENTS: timestamp | worktree | ticket | event | model | duration          |
+| 3/05 23:41:11 | readme | TICKET-002 | started | gpt-5.3 | n/a                    |
+| 3/05 23:40:35 | tests  | TICKET-004 | completed | gpt-5.1 | 45.2s                |
++----------------------------------------------------------------------------------+
+```
+
+## Comparison With CAR
+
+`cmcs` is intentionally narrower in scope for this workflow.
+
+| Metric | CAR | cmcs target |
+|---|---:|---:|
+| LOC | ~127,000 | ~2,000-2,500 |
+| CLI commands | 131 | 12 |
+| Config lines | 426 | ~10 |
+| Codex invocation depth | 8 layers | 1 layer (direct subprocess) |
