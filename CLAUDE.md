@@ -42,7 +42,7 @@ Is the next task dependent on a prior task's output?
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"  # optional per-ticket override
+model: "gpt-5.4"  # optional per-ticket override
 done: false
 ---
 

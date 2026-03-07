@@ -30,7 +30,7 @@ digraph when_to_use {
 - Codex agents implement (not Claude subagents)
 - Tickets must be fully self-contained (Codex can't ask questions)
 - Async execution via `cmcs run` + `cmcs wait`
-- Model selection matters (gpt-5.3-codex vs spark)
+- Model selection matters (gpt-5.4 / gpt-5.3-codex / spark / codex-max)
 - Claude subagents still handle review (spec + quality)
 
 **For large projects (10+ files, multi-phase):** Read the [large implementation preparation guide](../docs/cmcs-large-implementation-preparation.md) first — it covers research, design docs, phased execution, and handover documents.
@@ -98,11 +98,12 @@ See `./ticket-template.md` for the full template.
 
 | Model | Use When |
 |-------|----------|
-| `gpt-5.3-codex` | Complex multi-file refactors, architectural changes, new test suites |
-| `gpt-5.3-codex-spark` | Repetitive pattern application, medium complexity, well-defined changes |
-| `gpt-5.3-codex-spark` | Mechanical/rote changes, string replacements, config fixes |
+| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
+| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
+| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
+| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
 
-When unsure, use `gpt-5.3-codex` — over-provisioning wastes tokens but under-provisioning produces bad output.
+When unsure, use `gpt-5.4` — over-provisioning wastes tokens but under-provisioning produces bad output.
 
 ## Prompt Templates
 
@@ -112,23 +113,7 @@ When unsure, use `gpt-5.3-codex` — over-provisioning wastes tokens but under-p
 
 ## Worktree Strategy
 
-```
-Dependent tasks?   -> Same worktree, sequential tickets (TICKET-001, 002, ...)
-Independent tasks? -> Separate worktrees, parallel cmcs runs
-Single task?       -> Single worktree, single ticket
-```
-
-**Parallel worktrees** within a task group must touch non-overlapping files.
-
-**Parallel dispatch:** Always launch parallel `cmcs run` commands in a single Bash call with `&` backgrounding. Claude Code throttles concurrent Bash tool calls (~2 at a time), so separate tool calls cause ~2 min staggered starts.
-
-```bash
-# All agents launch simultaneously
-cmcs run worktrees/branch-a 2>&1 &
-cmcs run worktrees/branch-b 2>&1 &
-cmcs run worktrees/branch-c 2>&1 &
-wait
-```
+See the [orchestration guide](../docs/orchestration-guide.md) for dispatch strategy, parallel launch pattern, and commands.
 
 ## Example Workflow
 
@@ -223,30 +208,18 @@ Done!
 
 ## Red Flags
 
-**Never:**
-- Implement code directly as orchestrator (all work goes through Codex tickets)
-- Use Claude subagents for implementation (cmcs rule)
-- Auto-merge Codex output without review
-- Skip reviews (spec compliance OR code quality)
-- Proceed with unfixed issues
-- Trust Codex's self-reported success (run acceptance criteria yourself)
-- Write tickets that say "update all files that use X" (list every file explicitly)
-- Let Codex access files outside its worktree (copy artifacts in)
-- Skip the re-review after a fix ticket
-- **Start code quality review before spec compliance is APPROVED** (wrong order)
-- Move to next task while either review has open issues
-- Run `sudo` in any context
+See the [orchestration guide](../docs/orchestration-guide.md) for general cmcs rules and review checklist. Additional review-specific red flags:
 
-**If cmcs run fails:**
-1. Read logs: `cmcs logs <path>`
-2. Diagnose: ticket too vague? wrong model? codebase issue?
-3. Fix the ticket (more context, clearer steps, correct paths)
-4. Re-run — don't try to fix the code manually
+- **Start code quality review before spec compliance is APPROVED** (wrong order)
+- Skip reviews (spec compliance OR code quality)
+- Move to next task while either review has open issues
+- Skip the re-review after a fix ticket
+- Trust Codex's self-reported success (run acceptance criteria yourself)
 
 **If reviewer finds issues:**
 1. Write a targeted fix ticket describing exactly what to change
 2. Run cmcs again in the same worktree
-3. Reviewer reviews again
+3. Re-dispatch the same reviewer
 4. Repeat until approved
 
 **Trivial fixes only:** If a review issue is a one-line change (rename a constant, fix a typo), the orchestrator MAY fix it directly rather than writing a ticket. Use judgment — if there's any complexity, write a ticket.

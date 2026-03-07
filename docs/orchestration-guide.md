@@ -41,7 +41,7 @@ Every ticket follows this structure:
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"   # optional per-ticket override
+model: "gpt-5.4"         # optional per-ticket override
 done: false
 ---
 
@@ -69,7 +69,7 @@ Here's a complete ticket showing all fields and sections in use:
 ---
 title: "Implement dashboard filters"
 agent: "codex"
-model: "gpt-5.1-codex-mini"
+model: "gpt-5.3-codex-spark"
 done: false
 ---
 
@@ -219,3 +219,29 @@ Observed behavior in the cmcs workflow:
 - Per-ticket stdout/stderr artifacts are written under `.cmcs/logs/<run-id>/`.
 - `cmcs status` summarizes run state without requiring run IDs.
 - `cmcs wait <path>` removes the need for manual `sleep` polling loops.
+
+## Post-Execution Retrospective
+
+After completing a cmcs execution (all phases merged), record what worked and what didn't. This prevents repeating the same mistakes across projects.
+
+```markdown
+# Retrospective: <project> (<date>)
+
+## Stats
+- Tickets: N total, M first-pass success, K needed rework
+- Models: codex for X tickets, spark for Y tickets
+
+## What worked
+- [e.g., "spark handled all rename tickets perfectly"]
+- [e.g., "parallel worktrees for frontend/worker saved 30 min"]
+
+## What didn't
+- [e.g., "TICKET-003 needed 3 rework cycles — too vague on edge cases"]
+- [e.g., "spark couldn't handle cross-file type propagation — should have used codex"]
+
+## Lessons for next time
+- [e.g., "always include before/after snippets for type signature changes"]
+- [e.g., "split tickets touching >5 files — Codex quality degrades past that"]
+```
+
+**When to write:** After merging the final phase, before cleaning up worktrees. The context is freshest right after execution.

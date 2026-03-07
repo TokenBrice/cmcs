@@ -16,7 +16,7 @@ Everything the agent needs must be **in the ticket itself**.
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"           # see model guide below
+model: "gpt-5.4"                  # see model guide below
 reasoning_effort: "high"          # low, medium, high, xhigh (default: xhigh)
 done: false
 ---
@@ -55,13 +55,14 @@ other changes. Include any architectural context the agent needs.]
 
 ## Model Selection Guide
 
-| Model | Reasoning | Use When |
-|-------|-----------|----------|
-| `gpt-5.3-codex` | Full | Complex multi-file refactors, architectural changes, new test suites, subtle semantic reasoning |
-| `gpt-5.3-codex-spark` | Medium | Repetitive pattern application, well-defined changes across multiple files |
-| `gpt-5.3-codex-spark` | Light | Mechanical/rote changes, string replacements, fixture alignment, config fixes |
+| Model | Use When |
+|-------|----------|
+| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
+| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
+| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
+| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
 
-When unsure, use `gpt-5.3-codex`.
+When unsure, use `gpt-5.4`.
 
 ## Reasoning Effort Guide
 

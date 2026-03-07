@@ -28,7 +28,7 @@ Place in `.cmcs/tickets/TICKET-001.md` (or `<worktree>/.cmcs/tickets/`):
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"           # optional, overrides config default
+model: "gpt-5.4"                  # optional, overrides config default
 reasoning_effort: "high"         # optional: low, medium, high, xhigh (default: xhigh)
 done: false
 ---
@@ -56,8 +56,38 @@ cmcs logs <path>                 # view agent output
 cmcs dashboard                   # web UI
 ```
 
+### Model Selection
+
+| Model | Use When |
+|-------|----------|
+| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
+| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
+| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
+| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
+
 ### Rules
 
 - **Never use Claude sub-agents for implementation.** All work goes to Codex via tickets.
 - **Never auto-merge.** Review every file Codex creates, run acceptance criteria yourself.
 - **Never run sudo.**
+
+### Post-Execution Retrospective
+
+After completing a cmcs execution (all phases merged), record what worked and what didn't:
+
+```markdown
+# Retrospective: <project> (<date>)
+
+## Stats
+- Tickets: N total, M first-pass success, K needed rework
+- Models: codex for X tickets, spark for Y tickets
+
+## What worked
+- [e.g., "spark handled all rename tickets perfectly"]
+
+## What didn't
+- [e.g., "TICKET-003 needed 3 rework cycles — too vague on edge cases"]
+
+## Lessons for next time
+- [e.g., "always include before/after snippets for type signature changes"]
+```

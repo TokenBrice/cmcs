@@ -231,7 +231,7 @@ Record any failures, retries, or unexpected events here:
 ---
 title: "Short imperative description"
 agent: "codex"
-model: "gpt-5.3-codex"
+model: "gpt-5.4"
 reasoning_effort: "medium"
 done: false
 ---
