@@ -10,6 +10,16 @@ Independent tasks? → Separate worktrees, parallel runs
 Single task?       → Single worktree, single ticket
 ```
 
+**Parallel dispatch:** Launch all parallel `cmcs run` commands in a single shell call with `&` backgrounding. Claude Code throttles concurrent Bash tool calls (~2 at a time), causing ~2 min staggered starts if dispatched as separate tool calls.
+
+```bash
+# CORRECT — true parallel launch
+cmcs run worktrees/branch-a 2>&1 &
+cmcs run worktrees/branch-b 2>&1 &
+cmcs run worktrees/branch-c 2>&1 &
+wait
+```
+
 ### Ticket Format
 
 Place in `.cmcs/tickets/TICKET-001.md` (or `<worktree>/.cmcs/tickets/`):

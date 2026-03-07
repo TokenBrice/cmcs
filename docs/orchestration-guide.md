@@ -145,10 +145,15 @@ worktrees/feature-a/.cmcs/tickets/TICKET-001.md
 worktrees/feature-b/.cmcs/tickets/TICKET-001.md
 ```
 
-**Step 3: Launch runs (typically in separate terminals or background jobs)**
+**Step 3: Launch runs**
+
+Launch all parallel runs in a single shell call with `&` backgrounding. Claude Code throttles concurrent Bash tool calls (~2 at a time), so separate tool calls cause ~2 min staggered starts.
+
 ```bash
-cmcs run worktrees/feature-a
-cmcs run worktrees/feature-b
+# All agents launch simultaneously
+cmcs run worktrees/feature-a 2>&1 &
+cmcs run worktrees/feature-b 2>&1 &
+wait
 ```
 
 **Step 4: Monitor completion**

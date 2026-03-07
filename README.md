@@ -84,14 +84,37 @@ For ticket writing guidelines and advanced patterns, see the
 | `cmcs logs <path>` | Print tail of log files for latest run |
 | `cmcs dashboard` | Start web dashboard |
 
+## Adopting cmcs in Your Project
+
+### 1. Install the Claude Code skill
+
+```bash
+# From your project root
+claude skill add /path/to/cmcs/skill
+```
+
+This installs the **cmcs-driven-development** skill, which provides a structured two-stage review workflow (spec compliance + code quality) for Codex agent output.
+
+### 2. Add the CLAUDE.md snippet
+
+Copy the contents of [`CLAUDE-SNIPPET.md`](CLAUDE-SNIPPET.md) into your project's `CLAUDE.md`. This gives Claude the orchestrator role, dispatch decision tree, ticket format, and essential commands.
+
+### 3. Reference the guides
+
+For detailed workflow guidance, refer to:
+- **[Orchestration Guide](docs/orchestration-guide.md)** — ticket writing, dispatch patterns, review checklist
+- **[Large Implementation Preparation](docs/cmcs-large-implementation-preparation.md)** — for projects touching 10+ files or spanning multiple worktrees
+
 ## Documentation
 
 - **[Architecture](docs/architecture.md)** — three-layer model, state management,
   parallelism, dashboard
 - **[Orchestration Guide](docs/orchestration-guide.md)** — ticket writing,
   dispatch patterns, review checklist
+- **[Large Implementation Preparation](docs/cmcs-large-implementation-preparation.md)** — research, design, phased execution, handover documents
 - **[Configuration](docs/configuration.md)** — config file reference, defaults,
   ticket frontmatter fields
+- **[Skill](skill/)** — Claude Code skill for structured two-stage review workflow
 
 ## Project Layout
 
@@ -114,9 +137,15 @@ For ticket writing guidelines and advanced patterns, see the
 │   │   ├── app.py
 │   │   └── templates/
 │   └── tests/
+├── skill/
+│   ├── SKILL.md
+│   ├── ticket-template.md
+│   ├── spec-reviewer-prompt.md
+│   └── code-quality-reviewer-prompt.md
 ├── docs/
 │   ├── architecture.md
 │   ├── orchestration-guide.md
+│   ├── cmcs-large-implementation-preparation.md
 │   └── configuration.md
 ├── pyproject.toml
 └── README.md

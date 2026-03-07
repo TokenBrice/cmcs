@@ -19,6 +19,8 @@ You do NOT implement code directly unless it's trivial (a config edit, a one-lin
 | [README.md](README.md) | Command reference, quickstart, config, architecture overview |
 | [docs/architecture.md](docs/architecture.md) | System design, three-layer model, state model |
 | [docs/orchestration-guide.md](docs/orchestration-guide.md) | Operational playbook, ticket writing, review checklist |
+| [docs/cmcs-large-implementation-preparation.md](docs/cmcs-large-implementation-preparation.md) | Large project preparation process |
+| [skill/](skill/) | Claude Code skill for structured two-stage review workflow |
 
 Read these before your first orchestration session.
 
@@ -120,6 +122,7 @@ After every ticket completion:
 │   ├── worktree.py                ← git worktree management
 │   ├── dashboard/                 ← web UI (FastAPI + self-contained HTML)
 │   └── tests/                     ← 35 tests (unit + integration)
+├── skill/                         ← Claude Code skill (installable by adopters)
 ├── docs/                          ← architecture + orchestration guide
 ├── worktrees/                     ← parallel agent workspaces (gitignored)
 └── .cmcs/                         ← runtime state (gitignored)
