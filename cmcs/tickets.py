@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import warnings
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -46,6 +47,12 @@ def parse_ticket(content: str, filename: str) -> Ticket:
     """Parse a ticket markdown file with YAML frontmatter."""
     match = _FRONTMATTER_PATTERN.match(content)
     if not match:
+        if content.strip().startswith("---"):
+            warnings.warn(
+                f"Ticket {filename} has unclosed frontmatter (missing closing '---'). "
+                "Treating as raw content.",
+                stacklevel=2,
+            )
         return Ticket(
             filename=filename,
             title="",

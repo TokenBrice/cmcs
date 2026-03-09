@@ -64,15 +64,28 @@ def load_config(repo_root: Path) -> CmcsConfig:
 
     overrides: dict[str, Any]
     if config_path.exists():
-        loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
-        overrides = loaded if isinstance(loaded, dict) else {}
+        try:
+            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError:
+            overrides = {}
+        else:
+            overrides = loaded if isinstance(loaded, dict) else {}
     else:
         overrides = {}
 
     merged = _merge(asdict(DEFAULTS), overrides)
+
+    def _safe_construct(cls: type[Any], data: Any) -> Any:
+        """Construct a dataclass, ignoring unknown keys and handling None."""
+        if not isinstance(data, dict):
+            return cls()
+        known_fields = set(cls.__dataclass_fields__)
+        filtered = {key: value for key, value in data.items() if key in known_fields and value is not None}
+        return cls(**filtered)
+
     return CmcsConfig(
-        codex=CodexConfig(**merged.get("codex", {})),
-        worktrees=WorktreeConfig(**merged.get("worktrees", {})),
-        dashboard=DashboardConfig(**merged.get("dashboard", {})),
-        tickets=TicketDirConfig(**merged.get("tickets", {})),
+        codex=_safe_construct(CodexConfig, merged.get("codex")),
+        worktrees=_safe_construct(WorktreeConfig, merged.get("worktrees")),
+        dashboard=_safe_construct(DashboardConfig, merged.get("dashboard")),
+        tickets=_safe_construct(TicketDirConfig, merged.get("tickets")),
     )
