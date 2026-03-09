@@ -103,6 +103,19 @@ def test_discover_next_undone(tmp_path) -> None:
     assert undone[0].filename == "TICKET-002.md"
 
 
+def test_discover_tickets_nonexistent_dir(tmp_path) -> None:
+    """discover_tickets on a non-existent directory should return empty list."""
+    result = discover_tickets(tmp_path / "nonexistent")
+    assert result == []
+
+
+def test_parse_ticket_empty_content() -> None:
+    """Empty ticket content should not crash."""
+    ticket = parse_ticket("", "EMPTY.md")
+    assert ticket.filename == "EMPTY.md"
+    assert ticket.done is False
+
+
 def test_get_previous_progress(tmp_path) -> None:
     tickets_dir = tmp_path / ".cmcs" / "tickets"
     tickets_dir.mkdir(parents=True)

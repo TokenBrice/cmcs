@@ -101,3 +101,40 @@ def test_load_config_malformed_yaml(tmp_path: Path):
     cfg = load_config(tmp_path)
 
     assert cfg.codex.model == "gpt-5.3-codex"
+
+
+def test_load_config_invalid_port_type(tmp_path: Path) -> None:
+    """Non-integer port should not crash config loading."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("dashboard:\n  port: not-a-number\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    if isinstance(cfg.dashboard.port, int):
+        assert cfg.dashboard.port == 4173
+    else:
+        assert cfg.dashboard.port == "not-a-number"
+
+
+def test_load_config_empty_model(tmp_path: Path) -> None:
+    """Empty model string should be handled without crashing."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("codex:\n  model: ''\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.model in {"", "gpt-5.3-codex"}
+
+
+def test_load_config_non_mapping_top_level(tmp_path: Path) -> None:
+    """Top-level non-mapping YAML should fall back to defaults."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("- just\n- a\n- list\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.model == "gpt-5.3-codex"
+    assert cfg.dashboard.port == 4173

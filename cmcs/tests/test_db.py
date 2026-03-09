@@ -58,6 +58,30 @@ def test_create_run() -> None:
         assert run["worktree"] == "/tmp/worktree-a"
 
 
+def test_create_run_unregistered_worktree(tmp_path: Path) -> None:
+    """create_run with unregistered worktree should raise IntegrityError."""
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            db.create_run("/nonexistent/path", worker_pid=1)
+    finally:
+        db.close()
+
+
+def test_record_event_nonexistent_run(tmp_path: Path) -> None:
+    """record_event with non-existent run_id should raise IntegrityError."""
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        with pytest.raises(sqlite3.IntegrityError):
+            db.record_event(999, "ticket", "started")
+    finally:
+        db.close()
+
+
 def test_finish_run() -> None:
     with TemporaryDirectory() as tmp_dir:
         db = make_db(Path(tmp_dir))

@@ -10,9 +10,36 @@ from pathlib import Path
 
 import pytest
 
-from cmcs.config import load_config
+from cmcs.config import CmcsConfig, load_config
 from cmcs.db import Database
 from cmcs.runner import run_ticket_flow
+
+
+def _git_env() -> dict[str, str]:
+    return {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+
+
+def _init_git_repo(repo: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(["git", "checkout", "-B", "master"], cwd=repo, capture_output=True, check=True)
+    subprocess.run(
+        ["git", "commit", "--allow-empty", "-m", "init"],
+        cwd=repo,
+        env=_git_env(),
+        capture_output=True,
+        check=True,
+    )
+
+
+def _write_executable(path: Path, content: str) -> None:
+    path.write_text(textwrap.dedent(content), encoding="utf-8")
+    path.chmod(path.stat().st_mode | stat.S_IEXEC)
 
 
 @pytest.fixture
@@ -20,20 +47,11 @@ def e2e_repo(tmp_path: Path) -> dict[str, Path]:
     repo = tmp_path / "repo"
     repo.mkdir()
 
-    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-    subprocess.run(["git", "checkout", "-B", "master"], cwd=repo, capture_output=True, check=True)
+    _init_git_repo(repo)
 
     (repo / "README.md").write_text("integration repo\n", encoding="utf-8")
     subprocess.run(["git", "add", "README.md"], cwd=repo, capture_output=True, check=True)
-
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "test@example.com",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "test@example.com",
-    }
-    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, env=env, capture_output=True, check=True)
+    subprocess.run(["git", "commit", "--amend", "--no-edit"], cwd=repo, env=_git_env(), capture_output=True, check=True)
 
     cmcs_dir = repo / ".cmcs"
     (cmcs_dir / "tickets").mkdir(parents=True, exist_ok=True)
@@ -65,37 +83,34 @@ def e2e_repo(tmp_path: Path) -> dict[str, Path]:
     )
 
     fake_codex = repo / "fake_codex.py"
-    fake_codex.write_text(
-        textwrap.dedent(
-            """\
-            #!/usr/bin/env python3
-            import re
-            import sys
-            from pathlib import Path
+    _write_executable(
+        fake_codex,
+        """\
+        #!/usr/bin/env python3
+        import re
+        import sys
+        from pathlib import Path
 
-            prompt = sys.argv[-1]
-            match = re.search(r"update the ticket file at (.+?):", prompt, flags=re.IGNORECASE)
-            if match is None:
-                raise SystemExit("ticket path not found in prompt")
+        prompt = sys.argv[-1]
+        match = re.search(r"update the ticket file at (.+?):", prompt, flags=re.IGNORECASE)
+        if match is None:
+            raise SystemExit("ticket path not found in prompt")
 
-            ticket_path = Path(match.group(1).strip())
-            content = ticket_path.read_text(encoding="utf-8")
-            content = content.replace("done: false", "done: true", 1)
-            if "## Progress" not in content:
-                content += "\\n\\n## Progress\\n- Completed by fake codex.\\n"
-            ticket_path.write_text(content, encoding="utf-8")
+        ticket_path = Path(match.group(1).strip())
+        content = ticket_path.read_text(encoding="utf-8")
+        content = content.replace("done: false", "done: true", 1)
+        if "## Progress" not in content:
+            content += "\\n\\n## Progress\\n- Completed by fake codex.\\n"
+        ticket_path.write_text(content, encoding="utf-8")
 
-            repo_root = ticket_path.parents[2]
-            src_dir = repo_root / "src"
-            src_dir.mkdir(parents=True, exist_ok=True)
-            (src_dir / "hello.py").write_text("print('Hello, world!')\\n", encoding="utf-8")
+        repo_root = ticket_path.parents[2]
+        src_dir = repo_root / "src"
+        src_dir.mkdir(parents=True, exist_ok=True)
+        (src_dir / "hello.py").write_text("print('Hello, world!')\\n", encoding="utf-8")
 
-            print("fake codex done")
-            """
-        ),
-        encoding="utf-8",
+        print("fake codex done")
+        """,
     )
-    fake_codex.chmod(fake_codex.stat().st_mode | stat.S_IEXEC)
 
     codex_link = repo / "codex"
     if codex_link.exists() or codex_link.is_symlink():
@@ -151,3 +166,147 @@ async def test_full_ticket_flow(e2e_repo: dict[str, Path], monkeypatch) -> None:
     hello_path = repo / "src" / "hello.py"
     assert hello_path.exists()
     assert "Hello, world!" in hello_path.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_multi_ticket_sequential(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Multiple undone tickets should be processed in filename order."""
+    _init_git_repo(tmp_path)
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "master")
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+
+        fake_codex = tmp_path / "fake-codex"
+        _write_executable(fake_codex, "#!/bin/sh\nexit 0\n")
+
+        for i in range(1, 4):
+            (tickets_dir / f"TICKET-00{i}.md").write_text(
+                f"---\ntitle: Task {i}\ndone: false\n---\nDo task {i}\n",
+                encoding="utf-8",
+            )
+
+        import cmcs.runner as runner_module
+
+        original_exec = runner_module.asyncio.create_subprocess_exec
+        call_order: list[str] = []
+
+        async def fake_exec(*args, **kwargs):
+            ticket_file = sorted(tickets_dir.glob("TICKET-*.md"), key=lambda path: path.name)[len(call_order)]
+            call_order.append(ticket_file.name)
+            content = ticket_file.read_text(encoding="utf-8")
+            ticket_file.write_text(
+                content.replace("done: false", "done: true", 1),
+                encoding="utf-8",
+            )
+            return await original_exec(str(fake_codex), **kwargs)
+
+        monkeypatch.setattr(runner_module.asyncio, "create_subprocess_exec", fake_exec)
+
+        run_id = await run_ticket_flow(tmp_path, CmcsConfig(), db)
+        run_record = db.get_run(run_id)
+        events = db.get_events(run_id)
+    finally:
+        db.close()
+
+    started_events = [event for event in events if event["event"] == "started"]
+
+    assert call_order == ["TICKET-001.md", "TICKET-002.md", "TICKET-003.md"]
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+    assert [event["ticket"] for event in started_events] == call_order
+    assert len(started_events) == 3
+
+
+@pytest.mark.asyncio
+async def test_ticket_failure_stops_run(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A failing ticket should stop the run with failed status."""
+    _init_git_repo(tmp_path)
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "master")
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+        (tickets_dir / "TICKET-001.md").write_text(
+            "---\ntitle: Will fail\ndone: false\n---\nThis will fail\n",
+            encoding="utf-8",
+        )
+
+        fake_codex = tmp_path / "fake-codex-fail"
+        _write_executable(fake_codex, "#!/bin/sh\nexit 1\n")
+
+        import cmcs.runner as runner_module
+
+        original_exec = runner_module.asyncio.create_subprocess_exec
+
+        async def fake_exec(*args, **kwargs):
+            return await original_exec(str(fake_codex), **kwargs)
+
+        monkeypatch.setattr(runner_module.asyncio, "create_subprocess_exec", fake_exec)
+
+        run_id = await run_ticket_flow(tmp_path, CmcsConfig(), db)
+        run_record = db.get_run(run_id)
+        events = db.get_events(run_id)
+    finally:
+        db.close()
+
+    failed_events = [event for event in events if event["event"] == "failed"]
+
+    assert run_record is not None
+    assert run_record["status"] == "failed"
+    assert len(failed_events) == 1
+
+
+@pytest.mark.asyncio
+async def test_skips_done_tickets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Tickets with done: true should be skipped."""
+    _init_git_repo(tmp_path)
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "master")
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+        (tickets_dir / "TICKET-001.md").write_text(
+            "---\ntitle: Already done\ndone: true\n---\nDone\n",
+            encoding="utf-8",
+        )
+        (tickets_dir / "TICKET-002.md").write_text(
+            "---\ntitle: Also done\ndone: true\n---\nDone\n",
+            encoding="utf-8",
+        )
+
+        fake_codex = tmp_path / "fake-codex"
+        _write_executable(fake_codex, "#!/bin/sh\nexit 0\n")
+
+        import cmcs.runner as runner_module
+
+        original_exec = runner_module.asyncio.create_subprocess_exec
+        call_count = 0
+
+        async def fake_exec(*args, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            return await original_exec(str(fake_codex), **kwargs)
+
+        monkeypatch.setattr(runner_module.asyncio, "create_subprocess_exec", fake_exec)
+
+        run_id = await run_ticket_flow(tmp_path, CmcsConfig(), db)
+        run_record = db.get_run(run_id)
+        events = db.get_events(run_id)
+    finally:
+        db.close()
+
+    assert call_count == 0
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+    assert events == []

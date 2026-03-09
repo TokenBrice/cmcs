@@ -45,6 +45,12 @@ def test_cleanup_worktree(git_repo: Path, db: Database) -> None:
     assert worktrees[0]["status"] == "archived"
 
 
+def test_cleanup_nonexistent_branch(git_repo: Path, db: Database) -> None:
+    """cleanup_worktree for unknown branch should raise ValueError."""
+    with pytest.raises(ValueError, match="No worktree found"):
+        cleanup_worktree(git_repo, "nonexistent-branch", db)
+
+
 def test_cleanup_worktree_safe_delete_fails_on_unmerged(
     git_repo: Path, db: Database
 ) -> None:
