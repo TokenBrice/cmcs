@@ -37,7 +37,9 @@ def _coerce_done(value: object) -> bool:
             return True
         if lowered in {"false", "no", "0", ""}:
             return False
-    return bool(value)
+    if isinstance(value, (int, float)):
+        return bool(value)
+    return False
 
 
 def parse_ticket(content: str, filename: str) -> Ticket:
@@ -54,7 +56,18 @@ def parse_ticket(content: str, filename: str) -> Ticket:
             model=None,
         )
 
-    metadata = yaml.safe_load(match.group(1)) or {}
+    try:
+        metadata = yaml.safe_load(match.group(1)) or {}
+    except yaml.YAMLError:
+        return Ticket(
+            filename=filename,
+            title="",
+            agent="codex",
+            done=False,
+            body=content,
+            raw=content,
+            model=None,
+        )
     body = match.group(2)
 
     return Ticket(
@@ -71,6 +84,8 @@ def parse_ticket(content: str, filename: str) -> Ticket:
 
 def discover_tickets(tickets_dir: Path) -> list[Ticket]:
     """Find and parse TICKET-*.md files sorted alphabetically."""
+    if not tickets_dir.is_dir():
+        return []
     tickets: list[Ticket] = []
     for path in sorted(tickets_dir.glob("TICKET-*.md"), key=lambda p: p.name):
         tickets.append(parse_ticket(path.read_text(encoding="utf-8"), path.name))

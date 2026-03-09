@@ -124,3 +124,38 @@ def test_get_previous_progress_first_ticket(tmp_path) -> None:
     tickets = discover_tickets(tickets_dir)
     progress = get_previous_progress(tickets, "TICKET-001.md")
     assert progress is None
+
+
+def test_coerce_done_rejects_unknown_strings() -> None:
+    """Unknown string values for done should coerce to False, not True."""
+    from cmcs.tickets import _coerce_done
+
+    assert _coerce_done("maybe") is False
+    assert _coerce_done("oui") is False
+    assert _coerce_done("nah") is False
+    assert _coerce_done("true") is True
+    assert _coerce_done("yes") is True
+    assert _coerce_done("1") is True
+    assert _coerce_done("false") is False
+    assert _coerce_done("no") is False
+    assert _coerce_done("0") is False
+
+
+def test_parse_ticket_malformed_yaml() -> None:
+    """Malformed YAML frontmatter should not crash, return fallback ticket."""
+    from cmcs.tickets import parse_ticket
+
+    content = '---\ntitle: "unclosed\nagent: codex\n---\nBody text'
+    ticket = parse_ticket(content, "BAD.md")
+    assert ticket.filename == "BAD.md"
+    assert ticket.done is False
+    assert ticket.agent == "codex"
+
+
+def test_parse_ticket_tab_indentation() -> None:
+    """Tab-indented YAML should not crash."""
+    from cmcs.tickets import parse_ticket
+
+    content = "---\ntitle: test\n\tagent: codex\n---\nBody"
+    ticket = parse_ticket(content, "TAB.md")
+    assert ticket.done is False
