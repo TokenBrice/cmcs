@@ -25,7 +25,7 @@ where = ["."]
 include = ["cmcs*"]
 
 [tool.setuptools.package-data]
-cmcs = ["py.typed"]
+cmcs = ["py.typed", "dashboard/templates/*.html"]
 
 [tool.mypy]
 python_version = "3.12"
