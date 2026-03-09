@@ -234,7 +234,7 @@ sequential ticket chain.
 
 Observed behavior in the cmcs workflow:
 
-- Codex sets `done: true` in frontmatter to mark completion.
+- Codex sets `done: true` in frontmatter as part of its handoff instructions, but cmcs does not enforce/validate post-run ticket edits.
 - Codex appends a `## Progress` section to summarize changes.
 - Per-ticket stdout/stderr artifacts are written under `.cmcs/logs/<run-id>/`.
 - `cmcs status` summarizes run state without requiring run IDs.

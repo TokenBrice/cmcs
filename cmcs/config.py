@@ -1,5 +1,7 @@
 """Config loading for cmcs with defaults and YAML overrides."""
 
+from __future__ import annotations
+
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any

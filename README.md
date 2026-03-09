@@ -4,7 +4,7 @@
 
 cmcs is a lightweight broker between Claude (the orchestrator) and Codex (the worker).
 Claude decomposes tasks and reviews output. cmcs dispatches tickets as Codex subprocesses
-and tracks state. Codex executes. ~2,000 LOC, 12 commands, direct subprocess invocation.
+and tracks state. Codex executes. ~1,261 LOC (source), ~3,239 LOC including tests, 12 commands, direct subprocess invocation.
 
 ## Three-Layer Model
 
@@ -73,6 +73,7 @@ For ticket writing guidelines and advanced patterns, see the
 |---------|-------------|
 | `cmcs --help` | Show top-level help and command groups |
 | `cmcs init` | Initialize `.cmcs/` (db, tickets, logs) in current repo |
+| `cmcs version` | Print installed cmcs version |
 | `cmcs config show` | Print effective config |
 | `cmcs worktree create <branch>` | Create git worktree and register in DB |
 | `cmcs worktree list` | Show registered worktrees and latest run status |

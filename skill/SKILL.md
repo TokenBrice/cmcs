@@ -92,7 +92,7 @@ digraph process {
 
 See `./ticket-template.md` for the full template.
 
-**Critical:** Tickets must be completely self-contained. Codex agents cannot ask questions, read the plan file, or access files outside their worktree. Everything they need must be in the ticket itself.
+**Critical:** Tickets must be completely self-contained. Codex agents **should not** access files outside their worktree. The default sandbox mode allows full access — configure restrictive sandbox settings for isolation.
 
 **Model selection:**
 

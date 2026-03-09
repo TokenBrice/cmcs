@@ -1,5 +1,7 @@
 """Tests for ticket parsing and discovery."""
 
+from __future__ import annotations
+
 from cmcs.tickets import discover_tickets, get_previous_progress, parse_ticket
 
 SAMPLE_TICKET = """---

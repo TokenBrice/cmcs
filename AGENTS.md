@@ -17,7 +17,7 @@ You are a **Codex worker agent** in the cmcs orchestration workflow. An orchestr
 
 ```
 cmcs/
-├── cli.py          ← Typer CLI entrypoint (app = typer.Typer())
+├── cli.py                     ← 12 CLI commands (Typer)
 ├── config.py       ← CmcsConfig dataclass, YAML loading from .cmcs/config.yml
 ├── db.py           ← Database class: worktrees/runs/events tables, SQLite + WAL
 ├── runner.py       ← Codex subprocess orchestration, prompt building, orphan recovery
@@ -60,7 +60,7 @@ Key patterns to follow:
 - **Git repos in tests**: Create real git repos with `git init` + initial commit (see `_make_git_repo` in `test_cli.py` or `git_repo` in `test_worktree.py`)
 - **Database in tests**: `Database(tmp_path / "cmcs.db")` → `.initialize()` — always use temp paths
 - **CLI tests**: Use `typer.testing.CliRunner` with `runner.invoke(app, [...])`
-- **Dashboard tests**: Use `httpx.AsyncClient` with `create_app()`
+- **Dashboard tests**: Use `fastapi.testclient.TestClient` with `create_app()`
 - **No mocking of internals**: Tests use real git repos, real SQLite, real filesystem
 - **Test file naming**: `test_<module>.py` matching the source module
 

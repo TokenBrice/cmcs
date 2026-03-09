@@ -68,7 +68,7 @@ cmcs run worktrees/research-shared 2>&1 &
 wait
 ```
 
-Research worktrees are **read-only explorations** — they don't modify production code. They persist as reference material throughout the project.
+Research worktrees are **explorations** — they don't modify production code. They persist as reference material throughout the project.
 
 ### When to skip research
 
@@ -269,7 +269,7 @@ One sentence describing the outcome.
 
 ### Special ticket types
 
-- **`agent: "human"`** — for manual steps (database migrations, DNS changes). Not executed by cmcs, but documented in the ticket folder for completeness. Include a full runbook with validation gates and rollback.
+- **`agent: "human"`** — for manual steps (database migrations, DNS changes). Skipped by cmcs when `agent` is not `codex`, but documented in the ticket folder for completeness. Include a full runbook with validation gates and rollback.
 - **Runbooks** (e.g., `DB-MIGRATION-RUNBOOK.md`) — placed alongside tickets in the phase folder. Not picked up by cmcs but referenced from the execution handover.
 
 ---
@@ -393,11 +393,10 @@ Before considering preparation complete (all verification passes done), verify:
 |-------|------------|
 | Write tickets that say "update all files that use X" | List every file explicitly with line numbers |
 | Put deployment logic inside cmcs tickets | Write a human runbook for deployment coordination |
-| Assume Codex can access files outside its worktree | Copy supporting artifacts into the worktree before running |
+| Assume the default sandbox restricts filesystem access (it uses `danger-full-access`) | Configure restrictive sandbox settings, or copy supporting artifacts into the worktree |
 | Skip acceptance criteria on "simple" tickets | Every ticket gets build + tsc + test at minimum |
 | Merge parallel worktrees without checking file overlap | Document file ownership per worktree; verify no overlap |
 | Deploy a phase that leaves code-DB out of sync | Combine code deploy and DB migration into a single maintenance window |
 | Push phase code to main without `[skip ci]` when DB hasn't migrated | Always `[skip ci]` when code depends on a not-yet-executed DB migration |
 | Re-run failed tickets without reading the logs first | Diagnose, fix the ticket or code, then re-run |
 | Claim a phase is done without running smoke tests | Verify runtime behavior with curl, not just build success |
-

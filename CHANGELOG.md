@@ -13,7 +13,7 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 
 ### Added
 
-- 12 CLI commands via Typer: `init`, `config show`, `worktree create/list/cleanup`, `run`, `status`, `wait`, `stop`, `logs`, `dashboard`
+- 11 CLI commands via Typer: `init`, `config show`, `worktree create/list/cleanup`, `run`, `status`, `wait`, `stop`, `logs`, `dashboard`
 - Git worktree management for parallel agent workspaces
 - Codex subprocess orchestration (`runner.py`)
 - Ticket parsing and discovery with YAML frontmatter support
@@ -23,7 +23,7 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 - Configuration loading with sensible defaults
 - CLAUDE.md orchestrator instructions for Claude Code integration
 - Claude Code skill for structured two-stage review workflow
-- 35 tests (unit + integration)
+- 35 tests at release, now 95 (unit + integration)
 - Documentation: architecture guide, orchestration playbook, configuration reference, full ticket example
 - Project logo (SVG and PNG)
 

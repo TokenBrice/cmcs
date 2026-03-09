@@ -149,7 +149,7 @@ Follow [Semantic Versioning](https://semver.org/): breaking changes bump major, 
 │   ├── tickets.py                 ← ticket parsing + discovery
 │   ├── worktree.py                ← git worktree management
 │   ├── dashboard/                 ← web UI (FastAPI + self-contained HTML)
-│   └── tests/                     ← 46 tests (unit + integration)
+│   └── tests/                     ← 95 tests (unit + integration)
 ├── skill/                         ← Claude Code skill (installable by adopters)
 ├── agents/                        ← agent plans, tracking, reports (gitignored)
 ├── docs/                          ← architecture + orchestration guide

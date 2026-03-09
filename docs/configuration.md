@@ -36,6 +36,7 @@ tickets:
 |---|---|
 | `codex.model` | `gpt-5.3-codex` |
 | `codex.args` | `["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]` |
+| `codex.timeout_s` | `1800` |
 | `worktrees.root` | `worktrees` |
 | `worktrees.start_point` | `master` |
 | `dashboard.port` | `4173` |
@@ -52,11 +53,11 @@ codex:
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|
-| `title` | yes (recommended) | string | Short ticket summary. |
+| `title` | optional (recommended) | string | Short ticket summary. |
 | `agent` | no | string | Worker name. Defaults to `"codex"` when omitted. |
 | `model` | no | string | Per-ticket model override (takes precedence over config default). |
-| `reasoning_effort` | no | string | Per-ticket reasoning effort (`low`, `medium`, `high`, `xhigh`). Overrides config default. |
-| `done` | yes | bool | Completion flag. Flow picks first ticket where `done != true`. |
+| `reasoning_effort` | no | string | Per-ticket reasoning effort (`low`, `medium`, `high`, `xhigh`). Passed through to `codex` as a `reasoning_effort` command arg without validation. |
+| `done` | optional | bool | Completion flag. Parser defaults to `false`; flow picks first ticket where `done != true`. |
 
 ## Resolution Order
 
