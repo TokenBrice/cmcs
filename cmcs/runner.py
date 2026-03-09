@@ -144,7 +144,22 @@ async def _run_single_ticket(
             stdout=stdout_file,
             stderr=stderr_file,
         )
-        exit_code = await process.wait()
+        try:
+            exit_code = await asyncio.wait_for(
+                process.wait(), timeout=config.codex.timeout_s
+            )
+        except asyncio.TimeoutError:
+            process.kill()
+            await process.wait()
+            db.record_event(
+                run_id,
+                ticket.filename,
+                "failed",
+                model=model,
+                exit_code=-1,
+                duration_s=config.codex.timeout_s,
+            )
+            return False
     duration = time.monotonic() - started
 
     if exit_code == 0:
