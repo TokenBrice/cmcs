@@ -159,18 +159,10 @@ def clean(
         db = _db()
         db.initialize()
         try:
-            archived = [
-                worktree for worktree in db.list_worktrees() if worktree["status"] == "archived"
-            ]
-            # Keep run/event rows for history; only remove archived worktree entries.
-            count = len(archived)
-            for worktree in archived:
-                db._conn.execute(
-                    "DELETE FROM worktrees WHERE path = ? AND status = 'archived'",
-                    (worktree["path"],),
-                )
-            db._conn.commit()
-            typer.echo(f"Purged {count} archived worktree record(s) from database.")
+            purged, skipped = db.purge_archived_worktrees()
+            typer.echo(f"Purged {purged} archived worktree record(s) from database.")
+            if skipped:
+                typer.echo(f"Skipped {skipped} archived worktree(s) with historical runs.")
         finally:
             db.close()
 

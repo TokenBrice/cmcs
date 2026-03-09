@@ -84,6 +84,38 @@ class Database:
         rows = self._conn.execute("SELECT * FROM worktrees ORDER BY path").fetchall()
         return [dict(row) for row in rows]
 
+    def purge_archived_worktrees(self) -> tuple[int, int]:
+        """Delete archived worktrees that have no referencing runs.
+
+        Returns (purged_count, skipped_count) where skipped are archived
+        worktrees that still have historical runs.
+        """
+        rows = self._conn.execute(
+            "SELECT path FROM worktrees WHERE status = 'archived'"
+        ).fetchall()
+
+        purged_count = 0
+        skipped_count = 0
+        for row in rows:
+            path = str(row["path"])
+            run_count = int(
+                self._conn.execute(
+                    "SELECT COUNT(*) FROM runs WHERE worktree = ?",
+                    (path,),
+                ).fetchone()[0]
+            )
+            if run_count == 0:
+                self._conn.execute(
+                    "DELETE FROM worktrees WHERE path = ? AND status = 'archived'",
+                    (path,),
+                )
+                purged_count += 1
+            else:
+                skipped_count += 1
+
+        self._conn.commit()
+        return purged_count, skipped_count
+
     def create_run(self, worktree: str, worker_pid: int) -> int:
         """Create a new run and return its ID."""
         cursor = self._conn.execute(

@@ -43,6 +43,64 @@ def test_archive_worktree() -> None:
         assert worktrees[0]["status"] == "archived"
 
 
+def test_purge_archived_no_runs(tmp_path: Path) -> None:
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        worktree = "/tmp/worktree-a"
+        db.register_worktree(worktree, "main")
+        db.archive_worktree(worktree)
+
+        purged, skipped = db.purge_archived_worktrees()
+
+        assert (purged, skipped) == (1, 0)
+        assert db.list_worktrees() == []
+    finally:
+        db.close()
+
+
+def test_purge_archived_with_runs_skips(tmp_path: Path) -> None:
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        worktree = "/tmp/worktree-a"
+        db.register_worktree(worktree, "main")
+        db.create_run(worktree, worker_pid=123)
+        db.archive_worktree(worktree)
+
+        purged, skipped = db.purge_archived_worktrees()
+
+        assert (purged, skipped) == (0, 1)
+        worktrees = db.list_worktrees()
+        assert len(worktrees) == 1
+        assert worktrees[0]["path"] == worktree
+    finally:
+        db.close()
+
+
+def test_purge_archived_mixed(tmp_path: Path) -> None:
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        worktree_with_runs = "/tmp/worktree-a"
+        worktree_without_runs = "/tmp/worktree-b"
+
+        db.register_worktree(worktree_with_runs, "main")
+        db.register_worktree(worktree_without_runs, "feature")
+        db.archive_worktree(worktree_with_runs)
+        db.archive_worktree(worktree_without_runs)
+        db.create_run(worktree_with_runs, worker_pid=123)
+
+        purged, skipped = db.purge_archived_worktrees()
+
+        assert (purged, skipped) == (1, 1)
+    finally:
+        db.close()
+
+
 def test_create_run() -> None:
     with TemporaryDirectory() as tmp_dir:
         db = make_db(Path(tmp_dir))
