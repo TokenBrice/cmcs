@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `codex.auto_commit` config option — auto-commits worktree after successful ticket (default: `true`)
+- `codex.fallback_model` config option — retries failed tickets with fallback model on context/output-token limit errors
+- `cmcs ticket validate` warns when spark model is assigned to tickets referencing 8+ files
+- `docs/model-selection.md` — consolidated model selection guide with catalog, heuristics, and failure modes
+
+### Changed
+
+- Replaced duplicated model selection tables in 6 files with references to `docs/model-selection.md`
+
 ## [0.2.1] - 2026-03-09
 
 ### Fixed
