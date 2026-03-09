@@ -6,6 +6,7 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from cmcs.cli import _repo_root, app
@@ -127,6 +128,53 @@ def test_init_reconciles_orphaned_worktrees(tmp_path: Path) -> None:
         assert "Re-registered 1 orphaned worktree" in result.output
     finally:
         os.chdir(previous)
+
+
+def test_run_auto_registers_worktree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """run command should auto-register unregistered paths, preventing FK violations."""
+    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    (repo / ".cmcs" / "tickets").mkdir(parents=True, exist_ok=True)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(repo)])
+    assert result.exit_code == 0, result.output
+    assert "finished with status: completed" in result.output
+
+
+def test_logs_resolves_worktree_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """logs command should look in the worktree's .cmcs/logs/, not main repo."""
+    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    from cmcs.db import Database
+
+    db = Database(repo / ".cmcs" / "cmcs.db")
+    db.initialize()
+
+    # Simulate a worktree run: register a worktree and create a run.
+    wt_path = repo / "worktrees" / "feature-a"
+    wt_path.mkdir(parents=True)
+    db.register_worktree(str(wt_path), "feature-a")
+    run_id = db.create_run(str(wt_path), worker_pid=1)
+    db.finish_run(run_id, "completed")
+
+    # Create log files in the worktree's log directory (where runner.py writes them).
+    log_dir = wt_path / ".cmcs" / "logs" / str(run_id)
+    log_dir.mkdir(parents=True)
+    (log_dir / "TICKET-001.stdout").write_text("hello from worktree")
+
+    db.close()
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["logs", str(wt_path)])
+    assert result.exit_code == 0, result.output
+    assert "hello from worktree" in result.output
 
 
 def test_status_no_runs(tmp_path: Path) -> None:

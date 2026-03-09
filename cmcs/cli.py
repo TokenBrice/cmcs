@@ -162,6 +162,16 @@ def run(path: str = typer.Argument(".", help="Repo/worktree path")) -> None:
     db.initialize()
     cfg = load_config(root)
     _reconcile_worktrees(root, cfg, db)
+    existing = {wt["path"] for wt in db.list_worktrees()}
+    if str(repo_path) not in existing:
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=repo_path,
+        )
+        branch = result.stdout.strip() if result.returncode == 0 else repo_path.name
+        db.register_worktree(str(repo_path), branch)
     try:
         run_id = asyncio.run(run_ticket_flow(repo_path, cfg, db))
         run_record = db.get_run(run_id)
@@ -277,7 +287,7 @@ def logs(path: str = typer.Argument(..., help="Worktree path")) -> None:
         typer.echo("No runs for this path.")
         raise typer.Exit(code=1)
 
-    log_dir = _repo_root() / ".cmcs" / "logs" / str(run_row["id"])
+    log_dir = Path(run_row["worktree"]) / ".cmcs" / "logs" / str(run_row["id"])
     if not log_dir.exists():
         typer.echo("No log artifacts found.")
         raise typer.Exit(code=1)
