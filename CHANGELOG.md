@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-03-09
+
+### Fixed
+
+- Include dashboard HTML template in package data (caused `FileNotFoundError` on `cmcs dashboard` from pipx install)
+
 ## [0.2.0] - 2026-03-09
 
 Systematic self-improvement: 46 tickets across 9 phases, executed via cmcs itself. Test count 46 → 106.
@@ -81,5 +87,6 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 - Documentation: architecture guide, orchestration playbook, configuration reference, full ticket example
 - Project logo (SVG and PNG)
 
+[0.2.1]: https://github.com/TokenBrice/cmcs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/TokenBrice/cmcs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/TokenBrice/cmcs/releases/tag/v0.1.0
