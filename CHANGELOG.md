@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.2] - 2026-03-09
+
+### Fixed
+
+- Runner: exit-0 without `done: true` now records corrective `failed` event (prevents infinite re-execution loop)
+- Runner: auto-commit failure records warning event instead of silent `except Exception: pass`
+- Runner: `stop_worker()` extracted as shared helper with SIGTERM→SIGKILL escalation (used by CLI + dashboard)
+- Config: reject invalid types — non-list `codex.args`, string port numbers coerced to int, empty string model names
+- Dashboard: pagination pushed into SQL (`Database.paginated_runs()`) instead of Python-side slicing
+- Clean command: now removes old logs from registered worktrees, not just main repo
+- Database: `purge_archived_worktrees()` method replaces inline SQL in CLI clean command
+
 ## [0.3.1] - 2026-03-09
 
 ### Changed
@@ -117,6 +129,7 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 - Documentation: architecture guide, orchestration playbook, configuration reference, full ticket example
 - Project logo (SVG and PNG)
 
+[0.3.2]: https://github.com/TokenBrice/cmcs/compare/v0.3.1...v0.3.2
 [0.3.1]: https://github.com/TokenBrice/cmcs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/TokenBrice/cmcs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/TokenBrice/cmcs/compare/v0.2.0...v0.2.1
