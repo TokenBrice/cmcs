@@ -171,6 +171,14 @@ class Database:
         rows = self._conn.execute("SELECT * FROM runs ORDER BY id").fetchall()
         return [dict(row) for row in rows]
 
+    def paginated_runs(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
+        """Return runs with SQL-level pagination."""
+        rows = self._conn.execute(
+            "SELECT * FROM runs ORDER BY id LIMIT ? OFFSET ?",
+            (limit, offset),
+        ).fetchall()
+        return [dict(row) for row in rows]
+
     def record_event(
         self,
         run_id: int,

@@ -128,6 +128,24 @@ def test_create_run_unregistered_worktree(tmp_path: Path) -> None:
         db.close()
 
 
+def test_paginated_runs(tmp_path: Path) -> None:
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    try:
+        worktree = "/tmp/worktree-a"
+        db.register_worktree(worktree, "main")
+        for worker_pid in range(5):
+            db.create_run(worktree, worker_pid=worker_pid)
+
+        assert len(db.paginated_runs(limit=2, offset=0)) == 2
+        assert len(db.paginated_runs(limit=2, offset=3)) == 2
+        assert len(db.paginated_runs(limit=10, offset=0)) == 5
+        assert len(db.paginated_runs(limit=2, offset=10)) == 0
+    finally:
+        db.close()
+
+
 def test_record_event_nonexistent_run(tmp_path: Path) -> None:
     """record_event with non-existent run_id should raise IntegrityError."""
     db = Database(tmp_path / "test.db")

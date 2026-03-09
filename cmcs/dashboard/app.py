@@ -64,8 +64,7 @@ def create_app(repo_root: Path) -> FastAPI:
     async def runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         dashboard_db = _database()
         recover_orphans(dashboard_db)
-        all_runs = dashboard_db.all_runs()
-        paginated = all_runs[offset : offset + limit]
+        paginated = dashboard_db.paginated_runs(limit=limit, offset=offset)
         enriched: list[dict[str, Any]] = []
         for run in paginated:
             events = dashboard_db.get_events(int(run["id"]))
