@@ -15,6 +15,7 @@ from cmcs.runner import (
     build_prompt,
     recover_orphans,
     run_ticket_flow,
+    stop_worker,
 )
 from cmcs.tickets import Ticket, discover_tickets, parse_ticket
 
@@ -136,6 +137,40 @@ def test_recover_orphans_skips_alive_pids(tmp_path) -> None:
     assert recovered == []
     assert run is not None
     assert run["status"] == "running"
+
+
+def test_stop_worker_already_dead() -> None:
+    assert stop_worker(999999999) is True
+
+
+def test_stop_worker_signals_process() -> None:
+    import signal
+    from unittest.mock import call, patch
+
+    with patch("cmcs.runner.os.kill") as mock_kill:
+        with patch("cmcs.runner.time.sleep") as mock_sleep:
+            with patch("cmcs.runner._pid_alive", side_effect=[True, False]) as mock_alive:
+                stopped = stop_worker(12345)
+
+    assert stopped is True
+    assert mock_alive.call_count == 2
+    mock_sleep.assert_called_once_with(0.5)
+    mock_kill.assert_called_once_with(12345, signal.SIGTERM)
+    assert mock_kill.call_args_list == [call(12345, signal.SIGTERM)]
+
+
+def test_stop_worker_escalates_to_sigkill() -> None:
+    import signal
+    from unittest.mock import call, patch
+
+    with patch("cmcs.runner.os.kill") as mock_kill:
+        with patch("cmcs.runner.time.sleep"):
+            with patch("cmcs.runner._pid_alive", return_value=True):
+                stopped = stop_worker(12345)
+
+    assert stopped is False
+    assert mock_kill.call_args_list[0] == call(12345, signal.SIGTERM)
+    assert mock_kill.call_args_list[-1] == call(12345, signal.SIGKILL)
 
 
 def test_run_records_subprocess_pid(

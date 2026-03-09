@@ -445,18 +445,20 @@ def test_stop_verifies_termination(
 
     runner = CliRunner()
     with patch("cmcs.cli.recover_orphans") as mock_recover:
-        with patch("cmcs.cli.os.kill") as mock_kill:
-            with patch("cmcs.cli.time.sleep") as mock_sleep:
+        with patch("cmcs.runner.os.kill") as mock_kill:
+            with patch("cmcs.runner.time.sleep") as mock_sleep:
                 result = runner.invoke(app, ["stop", str(git_repo)])
 
     assert result.exit_code == 0, result.output
     assert "Stopped run" in result.output
     mock_recover.assert_called_once()
     assert mock_sleep.call_count == 10
-    assert mock_kill.call_count == 12
-    assert mock_kill.call_args_list[0] == call(99999, signal.SIGTERM)
-    assert mock_kill.call_args_list[-1] == call(99999, signal.SIGKILL)
-    for kill_call in mock_kill.call_args_list[1:11]:
+    assert mock_kill.call_count == 14
+    assert mock_kill.call_args_list[0] == call(99999, 0)
+    assert mock_kill.call_args_list[1] == call(99999, signal.SIGTERM)
+    assert mock_kill.call_args_list[-2] == call(99999, signal.SIGKILL)
+    assert mock_kill.call_args_list[-1] == call(99999, 0)
+    for kill_call in mock_kill.call_args_list[2:12]:
         assert kill_call == call(99999, 0)
 
     db = Database(git_repo / ".cmcs" / "cmcs.db")

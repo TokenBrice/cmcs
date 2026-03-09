@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import os
-import signal
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -13,7 +11,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from cmcs.db import Database
-from cmcs.runner import recover_orphans
+from cmcs.runner import recover_orphans, stop_worker
 
 
 def _ticket_counts(events: list[dict[str, Any]]) -> tuple[int, int]:
@@ -98,10 +96,7 @@ def create_app(repo_root: Path) -> FastAPI:
 
         pid = run.get("worker_pid")
         if isinstance(pid, int) and pid > 0:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except (ProcessLookupError, PermissionError):
-                pass
+            stop_worker(pid)
 
         dashboard_db.finish_run(run_id, "stopped")
         return {"status": "stopped", "run_id": run_id}

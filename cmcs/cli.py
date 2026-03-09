@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import signal
 import subprocess
 import time
 from dataclasses import asdict
@@ -17,7 +16,7 @@ import yaml
 
 from cmcs.config import load_config
 from cmcs.db import Database
-from cmcs.runner import recover_orphans, run_ticket_flow
+from cmcs.runner import recover_orphans, run_ticket_flow, stop_worker
 from cmcs.worktree import cleanup_worktree as _cleanup_worktree
 from cmcs.worktree import create_worktree as _create_worktree
 from cmcs.worktree import reconcile_worktrees as _reconcile_worktrees
@@ -483,27 +482,9 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
         run_row = sorted(running, key=lambda row: int(row["id"]))[-1]
         pid = run_row.get("worker_pid")
         if isinstance(pid, int) and pid > 0:
-            try:
-                os.kill(pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                typer.echo(f"Unable to signal pid {pid}; marking run stopped anyway.", err=True)
-            else:
-                # Wait briefly for graceful shutdown before escalating.
-                for _ in range(10):
-                    time.sleep(0.5)
-                    try:
-                        os.kill(pid, 0)
-                    except ProcessLookupError:
-                        break
-                    except PermissionError:
-                        break
-                else:
-                    try:
-                        os.kill(pid, signal.SIGKILL)
-                    except (ProcessLookupError, PermissionError):
-                        pass
+            stopped = stop_worker(pid)
+            if not stopped:
+                typer.echo(f"Warning: process {pid} may still be running.", err=True)
 
         db.finish_run(int(run_row["id"]), "stopped")
         typer.echo(f"Stopped run {run_row['id']}: {_colored_status('stopped')}")

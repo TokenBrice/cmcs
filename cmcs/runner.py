@@ -6,6 +6,7 @@ import asyncio
 import json
 import os
 import re
+import signal
 import subprocess
 import time
 from pathlib import Path
@@ -52,6 +53,38 @@ def _pid_alive(pid: int | None) -> bool:
         return True
     except (ProcessLookupError, PermissionError):
         return False
+
+
+def stop_worker(pid: int, timeout: float = 5.0) -> bool:
+    """Send SIGTERM, wait for process to die, escalate to SIGKILL if needed.
+
+    Returns True if the process is confirmed dead, False if it could not be stopped.
+    """
+    if pid <= 0:
+        return True
+    if not _pid_alive(pid):
+        return True
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+    for _ in range(int(timeout / 0.5)):
+        time.sleep(0.5)
+        if not _pid_alive(pid):
+            return True
+
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False
+
+    return not _pid_alive(pid)
 
 
 def _find_in_progress_ticket(events: list[dict[str, Any]]) -> str:
