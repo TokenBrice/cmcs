@@ -124,11 +124,13 @@ Follow [Semantic Versioning](https://semver.org/): breaking changes bump major, 
 - **Never auto-merge without review.** Every Codex output gets reviewed first.
 - **Never skip acceptance criteria.** Run the checks yourself.
 - **Never use Claude sub-agents for implementation work.**
+- **All agent artifacts go in `agents/`.** Plans, task breakdowns, tracking documents, status reports, and any other files created by the orchestrator or agents for coordination purposes must be placed in the `agents/` directory — never in the repo root or `docs/`.
 
 ## Project Layout
 
 ```
 .
+├── AGENTS.md                      ← Codex worker agent instructions
 ├── CLAUDE.md                      ← you are here
 ├── CHANGELOG.md                   ← version history (Keep a Changelog)
 ├── README.md                      ← command reference + quickstart
@@ -143,6 +145,7 @@ Follow [Semantic Versioning](https://semver.org/): breaking changes bump major, 
 │   ├── dashboard/                 ← web UI (FastAPI + self-contained HTML)
 │   └── tests/                     ← 46 tests (unit + integration)
 ├── skill/                         ← Claude Code skill (installable by adopters)
+├── agents/                        ← agent plans, tracking, reports (gitignored)
 ├── docs/                          ← architecture + orchestration guide
 ├── worktrees/                     ← parallel agent workspaces (gitignored)
 └── .cmcs/                         ← runtime state (gitignored)
