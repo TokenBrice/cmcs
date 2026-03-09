@@ -182,6 +182,50 @@ def test_run_records_subprocess_pid(
     assert run_record["worker_pid"] != os.getpid()
 
 
+def test_exit_zero_without_done_fails(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exit code 0 without done:true should fail the run instead of looping."""
+    import asyncio
+    import stat
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo nothing\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "sys.exit(0)\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    db.register_worktree(str(git_repo), "test")
+    run_id = asyncio.run(
+        asyncio.wait_for(run_ticket_flow(git_repo, CmcsConfig(), db), timeout=2)
+    )
+    run_record = db.get_run(run_id)
+
+    assert run_record is not None
+    assert run_record["status"] == "failed"
+
+    events = db.get_events(run_id)
+    failed_events = [event for event in events if event["event"] == "failed"]
+    started_events = [event for event in events if event["event"] == "started"]
+
+    assert len(started_events) == 1
+    assert len(failed_events) >= 1
+
+
 def test_run_creates_json_log(
     git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:

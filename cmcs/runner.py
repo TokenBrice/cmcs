@@ -193,6 +193,36 @@ async def _run_single_ticket(
     )
     success = exit_code == 0
 
+    if success:
+        failure_message = (
+            f"Worker exited 0 but {ticket.filename} not marked done — treating as failure"
+        )
+        try:
+            updated_ticket = parse_ticket(
+                ticket_path.read_text(encoding="utf-8"),
+                ticket.filename,
+            )
+            if not updated_ticket.done:
+                db.record_event(
+                    run_id,
+                    ticket.filename,
+                    "failed",
+                    model=model,
+                    exit_code=0,
+                )
+                print(failure_message)
+                success = False
+        except Exception:
+            db.record_event(
+                run_id,
+                ticket.filename,
+                "failed",
+                model=model,
+                exit_code=0,
+            )
+            print(failure_message)
+            success = False
+
     if success and config.codex.auto_commit:
         try:
             updated_content = ticket_path.read_text(encoding="utf-8")
