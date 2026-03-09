@@ -26,6 +26,13 @@
     .kv { display:grid; grid-template-columns:92px 1fr; gap:7px; margin:4px 0; font-size:12px; }
     .k { color:var(--muted); }
     .v { overflow-wrap:anywhere; }
+    .card-actions { display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+    .button { border:1px solid var(--panel-border); border-radius:999px; padding:8px 12px; color:var(--text); background:rgba(18,27,47,0.95); font:inherit; cursor:pointer; transition:background-color 120ms ease,border-color 120ms ease,opacity 120ms ease; }
+    .button:hover { background:#1a2a4e; border-color:#2b4b8b; }
+    .button:disabled { opacity:0.55; cursor:wait; }
+    .button-stop { color:#ffd7d1; border-color:rgba(231,76,60,0.55); }
+    .button-stop:hover { background:rgba(231,76,60,0.16); border-color:rgba(231,76,60,0.75); }
+    .button-logs { color:#d9eeff; border-color:rgba(86,181,255,0.45); }
     .events { margin-top:10px; border:1px solid var(--panel-border); border-radius:12px; overflow:hidden; background:var(--panel); }
     table { width:100%; border-collapse:collapse; font-size:12px; }
     thead { background:#17284c; }
@@ -33,6 +40,16 @@
     tbody tr:hover { background:rgba(86,181,255,0.08); }
     .empty { padding:16px; color:var(--muted); border:1px dashed var(--panel-border); border-radius:10px; background:rgba(18,27,47,0.8); }
     .event-type { color:var(--blue); text-transform:lowercase; }
+    .modal[hidden] { display:none; }
+    .modal { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(4,8,16,0.76); backdrop-filter:blur(8px); }
+    .modal-panel { width:min(960px,100%); max-height:min(82vh,900px); display:flex; flex-direction:column; border:1px solid var(--panel-border); border-radius:18px; background:linear-gradient(180deg,#152447 0%,#0f172b 100%); box-shadow:0 18px 60px rgba(0,0,0,0.45); overflow:hidden; }
+    .modal-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:16px 18px; border-bottom:1px solid var(--panel-border); }
+    .modal-title { font-size:16px; color:#f2f7ff; }
+    .modal-subtitle { margin-top:6px; color:var(--muted); font-size:12px; }
+    .modal-body { padding:16px 18px 18px; overflow:auto; display:grid; gap:12px; }
+    .log-file { border:1px solid var(--panel-border); border-radius:12px; background:rgba(10,16,31,0.92); overflow:hidden; }
+    .log-name { padding:10px 12px; color:#f2f7ff; font-size:12px; border-bottom:1px solid var(--panel-border); background:rgba(23,40,76,0.82); }
+    .log-content { margin:0; padding:12px; color:#dce8ff; font:inherit; font-size:12px; line-height:1.5; white-space:pre-wrap; overflow-wrap:anywhere; }
   </style>
 </head>
 <body>
@@ -59,10 +76,27 @@
       </div>
     </section>
   </main>
+  <div id="log-modal" class="modal" hidden>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="log-modal-title">
+      <div class="modal-header">
+        <div>
+          <div id="log-modal-title" class="modal-title">Run logs</div>
+          <div id="log-modal-subtitle" class="modal-subtitle"></div>
+        </div>
+        <button id="close-log-modal" type="button" class="button button-logs">Close</button>
+      </div>
+      <div id="log-modal-body" class="modal-body"></div>
+    </div>
+  </div>
   <script>
     const agentsEl = document.getElementById("agents");
     const eventsEl = document.getElementById("event-rows");
     const refreshEl = document.getElementById("last-refresh");
+    const logModalEl = document.getElementById("log-modal");
+    const logModalTitleEl = document.getElementById("log-modal-title");
+    const logModalSubtitleEl = document.getElementById("log-modal-subtitle");
+    const logModalBodyEl = document.getElementById("log-modal-body");
+    const closeLogModalEl = document.getElementById("close-log-modal");
 
     function parseTime(value) {
       if (!value) return null;
@@ -117,10 +151,80 @@
       return "n/a";
     }
 
-    async function fetchJson(url) {
-      const response = await fetch(url, { cache: "no-store" });
-      if (!response.ok) throw new Error(`Request failed: ${url} (${response.status})`);
-      return response.json();
+    async function requestJson(url, options = {}) {
+      const response = await fetch(url, { cache: "no-store", ...options });
+      const isJson = (response.headers.get("content-type") || "").includes("application/json");
+      const payload = isJson ? await response.json() : null;
+      if (!response.ok) {
+        const detail = payload && payload.detail ? payload.detail : `Request failed: ${url} (${response.status})`;
+        throw new Error(detail);
+      }
+      return payload;
+    }
+
+    function closeLogModal() {
+      logModalEl.hidden = true;
+    }
+
+    function renderModalMessage(message) {
+      logModalBodyEl.textContent = "";
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = message;
+      logModalBodyEl.appendChild(empty);
+    }
+
+    function renderLogs(logs) {
+      logModalBodyEl.textContent = "";
+      if (!logs.length) {
+        renderModalMessage("No logs found for this run.");
+        return;
+      }
+
+      logs.forEach((log) => {
+        const file = document.createElement("section");
+        file.className = "log-file";
+
+        const name = document.createElement("div");
+        name.className = "log-name";
+        name.textContent = log.name;
+        file.appendChild(name);
+
+        const content = document.createElement("pre");
+        content.className = "log-content";
+        content.textContent = log.content || "";
+        file.appendChild(content);
+
+        logModalBodyEl.appendChild(file);
+      });
+    }
+
+    async function openLogs(run) {
+      logModalTitleEl.textContent = `Run ${run.id} logs`;
+      logModalSubtitleEl.textContent = worktreeName(run.worktree);
+      renderModalMessage("Loading logs...");
+      logModalEl.hidden = false;
+
+      try {
+        const logs = await requestJson(`/api/runs/${run.id}/logs`);
+        renderLogs(logs || []);
+      } catch (error) {
+        console.error(error);
+        renderModalMessage(error.message);
+      }
+    }
+
+    async function stopRun(run, button) {
+      button.disabled = true;
+      refreshEl.textContent = `stopping run ${run.id}...`;
+      try {
+        await requestJson(`/api/runs/${run.id}/stop`, { method: "POST" });
+        await refresh();
+      } catch (error) {
+        console.error(error);
+        refreshEl.textContent = "stop failed: " + error.message;
+        button.disabled = false;
+      }
     }
 
     function renderAgents(runs, worktreesByPath, eventsByRun) {
@@ -173,6 +277,31 @@
         addKV("model", currentModel(events));
         addKV("pid", run.worker_pid ?? "n/a");
         addKV("elapsed", elapsedForRun(run));
+
+        const actions = document.createElement("div");
+        actions.className = "card-actions";
+
+        const logsButton = document.createElement("button");
+        logsButton.type = "button";
+        logsButton.className = "button button-logs";
+        logsButton.textContent = "Logs";
+        logsButton.addEventListener("click", () => {
+          void openLogs(run);
+        });
+        actions.appendChild(logsButton);
+
+        if (run.status === "running") {
+          const stopButton = document.createElement("button");
+          stopButton.type = "button";
+          stopButton.className = "button button-stop";
+          stopButton.textContent = "Stop";
+          stopButton.addEventListener("click", () => {
+            void stopRun(run, stopButton);
+          });
+          actions.appendChild(stopButton);
+        }
+
+        card.appendChild(actions);
 
         agentsEl.appendChild(card);
       });
@@ -241,8 +370,8 @@
     async function refresh() {
       try {
         const [runs, worktrees] = await Promise.all([
-          fetchJson("/api/runs"),
-          fetchJson("/api/worktrees"),
+          requestJson("/api/runs"),
+          requestJson("/api/worktrees"),
         ]);
         // Events are now inlined in each run object.
         const eventsByRun = Object.fromEntries(runs.map((run) => [run.id, run.events || []]));
@@ -255,6 +384,14 @@
         refreshEl.textContent = "refresh failed: " + error.message;
       }
     }
+
+    closeLogModalEl.addEventListener("click", closeLogModal);
+    logModalEl.addEventListener("click", (event) => {
+      if (event.target === logModalEl) closeLogModal();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && !logModalEl.hidden) closeLogModal();
+    });
 
     refresh();
     setInterval(refresh, 5000);

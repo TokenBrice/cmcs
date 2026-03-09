@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import signal
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -84,6 +86,43 @@ def create_app(repo_root: Path) -> FastAPI:
         if run is None:
             raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
         return dashboard_db.get_events(run_id)
+
+    @app.post("/api/runs/{run_id}/stop")
+    async def stop_run(run_id: int) -> dict[str, str | int]:
+        dashboard_db = _database()
+        run = dashboard_db.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        if run["status"] != "running":
+            raise HTTPException(status_code=400, detail=f"Run {run_id} is not running")
+
+        pid = run.get("worker_pid")
+        if isinstance(pid, int) and pid > 0:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                pass
+
+        dashboard_db.finish_run(run_id, "stopped")
+        return {"status": "stopped", "run_id": run_id}
+
+    @app.get("/api/runs/{run_id}/logs")
+    async def run_logs(run_id: int) -> list[dict[str, str]]:
+        dashboard_db = _database()
+        run = dashboard_db.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+
+        log_dir = Path(run["worktree"]) / ".cmcs" / "logs" / str(run_id)
+        if not log_dir.exists():
+            return []
+
+        logs: list[dict[str, str]] = []
+        for log_file in sorted(log_dir.iterdir()):
+            if log_file.is_file() and log_file.suffix in (".stdout", ".stderr"):
+                content = log_file.read_text(encoding="utf-8", errors="replace")[-4096:]
+                logs.append({"name": log_file.name, "content": content})
+        return logs
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> HTMLResponse:
