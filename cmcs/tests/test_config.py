@@ -9,6 +9,7 @@ def test_defaults_when_no_file():
         cfg = load_config(Path(tmpdir))
 
         assert cfg.codex.model == "gpt-5.3-codex"
+        assert cfg.codex.timeout_s == 1800
         assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]
         assert cfg.worktrees.root == "worktrees"
         assert cfg.worktrees.start_point == "master"
@@ -26,6 +27,7 @@ def test_partial_override():
         cfg = load_config(root)
 
         assert cfg.codex.model == "gpt-5.1-codex-mini"
+        assert cfg.codex.timeout_s == 1800
         assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]
         assert cfg.worktrees.root == "worktrees"
         assert cfg.worktrees.start_point == "master"
@@ -41,6 +43,7 @@ def test_full_override():
         config_file.write_text(
             "codex:\n"
             "  model: gpt-5.2-codex\n"
+            "  timeout_s: 120\n"
             "  args: ['--yolo', 'exec']\n"
             "worktrees:\n"
             "  root: wt\n"
@@ -55,6 +58,7 @@ def test_full_override():
         cfg = load_config(root)
 
         assert cfg.codex.model == "gpt-5.2-codex"
+        assert cfg.codex.timeout_s == 120
         assert cfg.codex.args == ["--yolo", "exec"]
         assert cfg.worktrees.root == "wt"
         assert cfg.worktrees.start_point == "main"

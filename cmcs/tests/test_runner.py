@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
-from cmcs.runner import _build_codex_args, build_prompt, recover_orphans
-from cmcs.tickets import Ticket, parse_ticket
+from cmcs.runner import _build_codex_args, _run_single_ticket, build_prompt, recover_orphans
+from cmcs.tickets import Ticket, discover_tickets, parse_ticket
 
 SAMPLE_TICKET = """---
 title: "Create hello"
@@ -118,3 +120,48 @@ def test_recover_orphans_skips_alive_pids(tmp_path) -> None:
     assert recovered == []
     assert run is not None
     assert run["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_run_single_ticket_timeout(tmp_path, monkeypatch) -> None:
+    db = Database(tmp_path / "cmcs.db")
+    db.initialize()
+    try:
+        config = CmcsConfig()
+        config.codex.timeout_s = 0.1
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+        ticket_file = tickets_dir / "TICKET-001.md"
+        ticket_file.write_text(
+            "---\ntitle: slow\ndone: false\n---\nDo something slow\n",
+            encoding="utf-8",
+        )
+
+        tickets = discover_tickets(tickets_dir)
+
+        import cmcs.runner as runner_module
+
+        original = runner_module.asyncio.create_subprocess_exec
+
+        async def fake_exec(*args, **kwargs):
+            kwargs = {key: value for key, value in kwargs.items() if key != "cwd"}
+            return await original("sleep", "10", **kwargs)
+
+        monkeypatch.setattr(runner_module.asyncio, "create_subprocess_exec", fake_exec)
+
+        db.register_worktree(str(tmp_path), "test")
+        run_id = db.create_run(str(tmp_path), worker_pid=1)
+
+        result = await _run_single_ticket(tickets[0], tmp_path, config, db, run_id, tickets)
+
+        assert result is False
+
+        events = db.get_events(run_id)
+        failed_events = [event for event in events if event["event"] == "failed"]
+
+        assert len(failed_events) == 1
+        assert failed_events[0]["exit_code"] == -1
+        assert failed_events[0]["duration_s"] == pytest.approx(config.codex.timeout_s)
+    finally:
+        db.close()
