@@ -44,7 +44,9 @@ digraph process {
     subgraph cluster_per_task {
         label="Per Task";
         "Write ticket (./ticket-template.md)" [shape=box];
-        "cmcs run + cmcs wait" [shape=box];
+        "cmcs ticket validate" [shape=box];
+        "Ticket valid?" [shape=diamond];
+        "cmcs run [--dry-run preview] + cmcs wait" [shape=box];
         "cmcs succeeded?" [shape=diamond];
         "Read cmcs logs, diagnose failure" [shape=box];
         "Fix ticket and re-run" [shape=box];
@@ -66,20 +68,23 @@ digraph process {
 
     "Read plan, extract all tasks with full text, note context, create TodoWrite" -> "Create worktree: cmcs worktree create branch-name";
     "Create worktree: cmcs worktree create branch-name" -> "Write ticket (./ticket-template.md)";
-    "Write ticket (./ticket-template.md)" -> "cmcs run + cmcs wait";
-    "cmcs run + cmcs wait" -> "cmcs succeeded?";
+    "Write ticket (./ticket-template.md)" -> "cmcs ticket validate";
+    "cmcs ticket validate" -> "Ticket valid?";
+    "Ticket valid?" -> "cmcs run [--dry-run preview] + cmcs wait" [label="yes"];
+    "Ticket valid?" -> "Write ticket (./ticket-template.md)" [label="fix issues"];
+    "cmcs run [--dry-run preview] + cmcs wait" -> "cmcs succeeded?";
     "cmcs succeeded?" -> "Run acceptance criteria yourself" [label="yes"];
     "cmcs succeeded?" -> "Read cmcs logs, diagnose failure" [label="no"];
     "Read cmcs logs, diagnose failure" -> "Fix ticket and re-run" ;
-    "Fix ticket and re-run" -> "cmcs run + cmcs wait";
+    "Fix ticket and re-run" -> "cmcs run [--dry-run preview] + cmcs wait";
     "Run acceptance criteria yourself" -> "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)";
     "Dispatch spec reviewer subagent (./spec-reviewer-prompt.md)" -> "Spec reviewer confirms code matches spec?";
     "Spec reviewer confirms code matches spec?" -> "Write fix ticket and re-run cmcs" [label="no"];
-    "Write fix ticket and re-run cmcs" -> "cmcs run + cmcs wait" [label="re-run"];
+    "Write fix ticket and re-run cmcs" -> "cmcs run [--dry-run preview] + cmcs wait" [label="re-run"];
     "Spec reviewer confirms code matches spec?" -> "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" [label="yes"];
     "Dispatch code quality reviewer subagent (./code-quality-reviewer-prompt.md)" -> "Code quality reviewer approves?";
     "Code quality reviewer approves?" -> "Write quality-fix ticket and re-run cmcs" [label="no"];
-    "Write quality-fix ticket and re-run cmcs" -> "cmcs run + cmcs wait" [label="re-run"];
+    "Write quality-fix ticket and re-run cmcs" -> "cmcs run [--dry-run preview] + cmcs wait" [label="re-run"];
     "Code quality reviewer approves?" -> "Mark task complete in TodoWrite" [label="yes"];
     "Mark task complete in TodoWrite" -> "More tasks remain?";
     "More tasks remain?" -> "Write ticket (./ticket-template.md)" [label="yes"];
@@ -92,7 +97,9 @@ digraph process {
 
 See `./ticket-template.md` for the full template.
 
-**Critical:** Tickets must be completely self-contained. Codex agents **should not** access files outside their worktree. The default sandbox mode allows full access — configure restrictive sandbox settings for isolation.
+**Pre-flight validation:** After writing tickets, run `cmcs ticket validate <path>` to check for formatting issues and model/scope mismatches (e.g., spark model assigned to tickets referencing 8+ files). Optionally run `cmcs run --dry-run <path>` to preview which tickets will be processed.
+
+**Critical:** Tickets must be completely self-contained. The default cmcs config uses `--sandbox danger-full-access`, which grants Codex full filesystem access. If you need true isolation, override `codex.args` in `.cmcs/config.yml` with restrictive sandbox settings.
 
 **Model selection:** See the [Model Selection Guide](../docs/model-selection.md) for the full catalog and selection heuristics.
 
@@ -105,6 +112,26 @@ See `./ticket-template.md` for the full template.
 ## Worktree Strategy
 
 See the [orchestration guide](../docs/orchestration-guide.md) for dispatch strategy, parallel launch pattern, and commands.
+
+## Auto-Commit Behavior
+
+Since v0.3.0, cmcs auto-commits worktree changes after each successful ticket (when `codex.auto_commit` is `true`, which is the default). This means:
+
+- **Reviewing:** Use `git log` and `git diff HEAD~1` in the worktree to see exactly what Codex changed, rather than looking at uncommitted files.
+- **SHA references:** When dispatching the code quality reviewer, `HEAD_SHA` is the auto-commit and `BASE_SHA` is the commit before `cmcs run`.
+- **Disabling:** Set `codex.auto_commit: false` in `.cmcs/config.yml` if you prefer to review uncommitted changes and commit manually.
+
+## Fallback Model
+
+Configure `codex.fallback_model` in `.cmcs/config.yml` to automatically retry failed tickets with a larger model when the failure is due to context-length or output-token limits. Example:
+
+```yaml
+codex:
+  model: gpt-5.3-codex
+  fallback_model: gpt-5.1-codex-max
+```
+
+This eliminates manual re-dispatch for model-capacity failures.
 
 ## Example Workflow
 
@@ -119,6 +146,7 @@ You: I'm using cmcs-Driven Development to execute this plan.
 Task 1: Add data model
 
 [Write TICKET-001.md with full task text, context, acceptance criteria]
+[Validate: cmcs ticket validate worktrees/feat/new-feature — all OK]
 [Copy ticket to worktree: cp to worktrees/feat/new-feature/.cmcs/tickets/]
 [cmcs run worktrees/feat/new-feature]
 [cmcs wait worktrees/feat/new-feature]
@@ -126,6 +154,7 @@ Task 1: Add data model
 cmcs: Completed (1/1 tickets passed)
 
 [Run acceptance criteria: build + test — all pass]
+[Review changes: git -C worktrees/feat/new-feature log --oneline -3]
 
 [Dispatch spec compliance reviewer (Claude subagent)]
 Spec reviewer: APPROVED — all requirements met, nothing extra
@@ -197,6 +226,28 @@ Done!
 - Review loops ensure fixes are verified
 - Final review catches cross-task integration issues
 
+## Troubleshooting
+
+**Ticket fails (`cmcs` reports failed status):**
+1. Check logs: `cmcs logs <worktree-path>` (use `--follow` for live output, `--lines N` for more context)
+2. Check stderr for model-limit errors — if `fallback_model` is configured, cmcs retries automatically
+3. Read the agent's stdout to see where it got stuck
+4. Fix the ticket (clearer instructions, different model, narrower scope) and re-run
+
+**Re-running after a failure:**
+- cmcs only processes tickets where `done: false` — already-completed tickets are skipped
+- If the agent partially completed work, review it before re-running (it won't undo partial changes)
+- For multi-ticket worktrees, only the failed ticket and subsequent ones will re-run
+
+**Interrupted/orphaned runs:**
+- cmcs auto-recovers orphaned runs (process died) on the next `cmcs run`, `cmcs status`, or `cmcs wait`
+- Use `cmcs status --active` to see only running runs
+- Use `cmcs status --latest` to see only the most recent run per worktree
+
+**Cleanup:**
+- `cmcs clean --logs-days 7` removes logs older than 7 days
+- `cmcs clean --purge-archived` removes archived worktree records from the database
+
 ## Red Flags
 
 See the [orchestration guide](../docs/orchestration-guide.md) for general cmcs rules and review checklist. Additional review-specific red flags:
@@ -231,3 +282,21 @@ See the [orchestration guide](../docs/orchestration-guide.md) for general cmcs r
 
 **Alternative workflow:**
 - **superpowers:subagent-driven-development** — Use Claude subagents instead of Codex for implementation
+
+## Recommended Configuration
+
+Create `.cmcs/config.yml` in your project root after `cmcs init`:
+
+```yaml
+codex:
+  model: gpt-5.3-codex           # default model for tickets without model: override
+  fallback_model: gpt-5.1-codex-max  # auto-retry on context/output-token limit failures
+  auto_commit: true               # auto-commit worktree after successful ticket (default)
+  timeout_s: 1800                 # 30 min timeout per ticket (default)
+
+worktrees:
+  root: worktrees                 # worktree directory (default)
+  start_point: master             # branch to create worktrees from (default)
+```
+
+See the [Configuration Reference](../docs/configuration.md) for all options.
