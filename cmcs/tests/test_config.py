@@ -64,3 +64,40 @@ def test_full_override():
         assert cfg.worktrees.start_point == "main"
         assert cfg.dashboard.port == 8080
         assert cfg.tickets.dir == "tickets"
+
+
+def test_load_config_null_section(tmp_path: Path):
+    """Config with null section values should not crash."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("codex: null\ndashboard: null\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.model == "gpt-5.3-codex"
+    assert cfg.dashboard.port == 4173
+
+
+def test_load_config_unknown_nested_keys(tmp_path: Path):
+    """Config with unknown nested keys should not crash."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text(
+        "codex:\n  model: custom-model\n  unknown_key: value\n",
+        encoding="utf-8",
+    )
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.model == "custom-model"
+
+
+def test_load_config_malformed_yaml(tmp_path: Path):
+    """Malformed YAML should fall back to defaults."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("codex:\n  model: 'unclosed\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.model == "gpt-5.3-codex"

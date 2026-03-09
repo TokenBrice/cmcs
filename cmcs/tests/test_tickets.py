@@ -159,3 +159,18 @@ def test_parse_ticket_tab_indentation() -> None:
     content = "---\ntitle: test\n\tagent: codex\n---\nBody"
     ticket = parse_ticket(content, "TAB.md")
     assert ticket.done is False
+
+
+def test_parse_ticket_unclosed_frontmatter_warns() -> None:
+    """Unclosed frontmatter should produce a warning."""
+    import warnings
+
+    from cmcs.tickets import parse_ticket
+
+    content = "---\ntitle: test\nagent: codex\nBody without closing ---"
+    with warnings.catch_warnings(record=True) as captured_warnings:
+        warnings.simplefilter("always")
+        ticket = parse_ticket(content, "UNCLOSED.md")
+        assert len(captured_warnings) == 1
+        assert "unclosed frontmatter" in str(captured_warnings[0].message).lower()
+    assert ticket.done is False
