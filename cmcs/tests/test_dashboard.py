@@ -127,6 +127,65 @@ def test_run_events_404_for_nonexistent(tmp_path: Path) -> None:
     assert response.status_code == 404
 
 
+def test_stop_run_api(tmp_path: Path) -> None:
+    """POST /api/runs/{id}/stop should stop a running run."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    run_id = db.create_run("/tmp/wt", worker_pid=99999)
+    db.close()
+
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.post(f"/api/runs/{run_id}/stop")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "stopped"
+
+
+def test_stop_nonrunning_run(tmp_path: Path) -> None:
+    """Stopping a non-running run should return 400."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    run_id = db.create_run("/tmp/wt", worker_pid=1)
+    db.finish_run(run_id, "completed")
+    db.close()
+
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.post(f"/api/runs/{run_id}/stop")
+
+    assert response.status_code == 400
+
+
+def test_run_logs_api(tmp_path: Path) -> None:
+    """GET /api/runs/{id}/logs should return log contents."""
+    wt_path = tmp_path / "wt"
+    wt_path.mkdir()
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree(str(wt_path), "main")
+    run_id = db.create_run(str(wt_path), worker_pid=1)
+    db.close()
+
+    log_dir = wt_path / ".cmcs" / "logs" / str(run_id)
+    log_dir.mkdir(parents=True)
+    (log_dir / "TICKET-001.stdout").write_text("hello logs", encoding="utf-8")
+
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get(f"/api/runs/{run_id}/logs")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert "hello logs" in data[0]["content"]
+
+
 def test_index_page(tmp_path: Path) -> None:
     _seed_dashboard_db(tmp_path)
     with TestClient(create_app(tmp_path)) as test_client:
