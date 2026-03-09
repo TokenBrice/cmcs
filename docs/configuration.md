@@ -11,6 +11,8 @@ Missing keys fall back to defaults, and nested sections are merged recursively.
 ```yaml
 codex:
   model: gpt-5.3-codex
+  auto_commit: true
+  fallback_model: gpt-5.1-codex-max
   args:
     - --yolo
     - exec
@@ -37,6 +39,8 @@ tickets:
 | `codex.model` | `gpt-5.3-codex` |
 | `codex.args` | `["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]` |
 | `codex.timeout_s` | `1800` |
+| `codex.auto_commit` | `true` |
+| `codex.fallback_model` | `null` (disabled) |
 | `worktrees.root` | `worktrees` |
 | `worktrees.start_point` | `master` |
 | `dashboard.port` | `4173` |
