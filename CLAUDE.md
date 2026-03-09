@@ -103,6 +103,21 @@ Two-stage review after every ticket completion:
 3. If issues: rewrite ticket with clearer instructions, re-dispatch.
 4. If clean: commit, move on.
 
+## Release Process
+
+When shipping a new version:
+
+1. Update `## [Unreleased]` in `CHANGELOG.md` — rename to `## [X.Y.Z] - YYYY-MM-DD`, add the comparison link at the bottom
+2. Bump `version` in `pyproject.toml`
+3. Commit: `release: vX.Y.Z`
+4. Tag: `git tag -a vX.Y.Z -m "vX.Y.Z — Short description"`
+5. Push: `git push origin master --tags`
+6. Create GitHub release: `gh release create vX.Y.Z --title "vX.Y.Z — Short description" --notes "<changelog section>"`
+
+After releasing, add a fresh `## [Unreleased]` section at the top of `CHANGELOG.md`.
+
+Follow [Semantic Versioning](https://semver.org/): breaking changes bump major, new features bump minor, fixes bump patch.
+
 ## Constraints
 
 - **Never run sudo commands.** Provide them for the user to execute.
@@ -115,6 +130,7 @@ Two-stage review after every ticket completion:
 ```
 .
 ├── CLAUDE.md                      ← you are here
+├── CHANGELOG.md                   ← version history (Keep a Changelog)
 ├── README.md                      ← command reference + quickstart
 ├── pyproject.toml                 ← package config (pip install -e ".[dev]")
 ├── cmcs/                          ← source
