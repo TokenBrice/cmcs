@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 
-from cmcs.config import load_config
+from cmcs.config import CmcsConfig, CodexConfig, load_config
 
 
 def test_defaults_when_no_file():
@@ -140,3 +140,45 @@ def test_load_config_non_mapping_top_level(tmp_path: Path) -> None:
 
     assert cfg.codex.model == "gpt-5.3-codex"
     assert cfg.dashboard.port == 4173
+
+
+def test_codex_config_defaults():
+    """New fields should have correct defaults."""
+    cfg = CodexConfig()
+    assert cfg.auto_commit is True
+    assert cfg.fallback_model is None
+
+
+def test_codex_config_custom_values():
+    """New fields should accept custom values."""
+    cfg = CodexConfig(auto_commit=False, fallback_model="gpt-5.1-codex-max")
+    assert cfg.auto_commit is False
+    assert cfg.fallback_model == "gpt-5.1-codex-max"
+
+
+def test_load_config_with_new_fields(tmp_path: Path):
+    """Config YAML with new fields should parse correctly."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text(
+        "codex:\n"
+        "  auto_commit: false\n"
+        "  fallback_model: gpt-5.1-codex-max\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(tmp_path)
+    assert cfg.codex.auto_commit is False
+    assert cfg.codex.fallback_model == "gpt-5.1-codex-max"
+
+
+def test_load_config_defaults_new_fields(tmp_path: Path):
+    """Config YAML without new fields should use defaults."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text(
+        "codex:\n  model: gpt-5.4\n",
+        encoding="utf-8",
+    )
+    cfg = load_config(tmp_path)
+    assert cfg.codex.auto_commit is True
+    assert cfg.codex.fallback_model is None

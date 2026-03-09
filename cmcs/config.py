@@ -14,6 +14,8 @@ class CodexConfig:
     model: str = "gpt-5.3-codex"
     command: str = "codex"
     timeout_s: int = 1800
+    auto_commit: bool = True
+    fallback_model: str | None = None
     args: list[str] = field(
         default_factory=lambda: [
             "--yolo", "exec",
