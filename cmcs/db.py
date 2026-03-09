@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import sqlite3
 from pathlib import Path
+from types import TracebackType
 from typing import Any, Optional
 
 
@@ -19,7 +20,19 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON;")
         self._conn.execute("PRAGMA journal_mode = WAL;")
+        self._conn.execute("PRAGMA busy_timeout = 5000;")
         self._conn.commit()
+
+    def __enter__(self) -> Database:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> None:
+        self.close()
 
     def initialize(self) -> None:
         """Create the database schema if it does not already exist."""
@@ -86,9 +99,9 @@ class Database:
         return dict(row) if row is not None else None
 
     def finish_run(self, run_id: int, status: str) -> None:
-        """Finish a run with the provided status."""
+        """Finish a run with the provided status. Only updates if still running."""
         self._conn.execute(
-            "UPDATE runs SET status = ?, finished_at = datetime('now') WHERE id = ?",
+            "UPDATE runs SET status = ?, finished_at = datetime('now') WHERE id = ? AND status = 'running'",
             (status, run_id),
         )
         self._conn.commit()
@@ -147,4 +160,3 @@ class Database:
     def close(self) -> None:
         """Close the underlying SQLite connection."""
         self._conn.close()
-

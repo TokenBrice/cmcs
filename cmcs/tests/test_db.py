@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import sqlite3
 from pathlib import Path
 from tempfile import TemporaryDirectory
+
+import pytest
 
 from cmcs.db import Database
 
@@ -66,6 +69,33 @@ def test_finish_run() -> None:
         assert run is not None
         assert run["status"] == "completed"
         assert run["finished_at"] is not None
+
+
+def test_finish_run_no_double_finish(tmp_path: Path) -> None:
+    """finish_run should not overwrite a terminal status."""
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    run_id = db.create_run("/tmp/wt", worker_pid=1)
+
+    db.finish_run(run_id, "completed")
+    assert db.get_run(run_id)["status"] == "completed"
+
+    # Second finish should be a no-op
+    db.finish_run(run_id, "failed")
+    assert db.get_run(run_id)["status"] == "completed"
+    db.close()
+
+
+def test_database_busy_timeout_set(tmp_path: Path) -> None:
+    """Database should configure busy_timeout for concurrent access."""
+    db = Database(tmp_path / "test.db")
+    db.initialize()
+
+    row = db._conn.execute("PRAGMA busy_timeout").fetchone()
+
+    assert row[0] == 5000
+    db.close()
 
 
 def test_record_event() -> None:
@@ -141,3 +171,18 @@ def test_all_runs() -> None:
 
         assert len(runs) == 3
         assert [run["id"] for run in runs] == [run_id_1, run_id_2, run_id_3]
+
+
+def test_database_context_manager(tmp_path: Path) -> None:
+    """Database should work as a context manager and close on exit."""
+    db_path = tmp_path / "test.db"
+
+    with Database(db_path) as db:
+        db.initialize()
+        db.register_worktree("/tmp/test", "main")
+        worktrees = db.list_worktrees()
+
+        assert len(worktrees) == 1
+
+    with pytest.raises(sqlite3.ProgrammingError):
+        db.list_worktrees()
