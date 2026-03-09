@@ -196,7 +196,14 @@ async def run_ticket_flow(repo_path: Path, config: CmcsConfig, db: Database) -> 
 
     while True:
         tickets = discover_tickets(tickets_dir)
-        next_ticket = next((ticket for ticket in tickets if not ticket.done), None)
+        skipped = [ticket for ticket in tickets if not ticket.done and ticket.agent != "codex"]
+        for ticket in skipped:
+            print(f"Skipping ticket {ticket.filename} (agent={ticket.agent})")
+
+        next_ticket = next(
+            (ticket for ticket in tickets if not ticket.done and ticket.agent == "codex"),
+            None,
+        )
         if next_ticket is None:
             db.finish_run(run_id, "completed")
             return run_id
