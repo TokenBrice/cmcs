@@ -40,6 +40,11 @@ Agent tool (general-purpose):
 
     ## Your Job
 
+    **Important context:** cmcs auto-commits changes after successful tickets by default.
+    Use `git log --oneline -5` and `git diff HEAD~1` in the worktree to see exactly what
+    changed. Check `cmcs logs <worktree-path>` for the agent's stdout/stderr output —
+    it may reveal warnings, partial failures, or assumptions the agent made.
+
     Read the implementation code and verify:
 
     **Missing requirements:**

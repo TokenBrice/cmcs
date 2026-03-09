@@ -17,6 +17,8 @@ Agent tool (superpowers:code-reviewer):
   DESCRIPTION: [task summary]
 ```
 
+**Note on auto-commit:** Since cmcs v0.3.0, worktree changes are auto-committed after successful tickets (when `codex.auto_commit` is enabled, which is the default). The `HEAD_SHA` will be the auto-commit SHA. Use `git diff BASE_SHA..HEAD_SHA` to see exactly what changed. If auto-commit is disabled, review uncommitted changes directly.
+
 **Code reviewer returns:** Strengths, Issues (Critical/Important/Minor), Assessment
 
 **Additional context for reviewer:** Note that the implementation was done by a Codex agent via cmcs ticket. Common Codex patterns to watch for:
@@ -25,3 +27,4 @@ Agent tool (superpowers:code-reviewer):
 - Inconsistency with existing codebase patterns/conventions
 - Hardcoded values that should be constants
 - Test quality (testing behavior vs testing implementation details)
+- Check `cmcs logs <worktree-path>` for agent stdout/stderr — may reveal runtime warnings or failed attempts
