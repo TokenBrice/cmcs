@@ -310,3 +310,35 @@ async def test_skips_done_tickets(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert run_record is not None
     assert run_record["status"] == "completed"
     assert events == []
+
+
+@pytest.mark.asyncio
+async def test_human_agent_ticket_skipped(tmp_path: Path) -> None:
+    """Integration test: human agent tickets are skipped."""
+    _init_git_repo(tmp_path)
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "master")
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+        (tickets_dir / "TICKET-001.md").write_text(
+            "---\ntitle: Manual migration\nagent: human\ndone: false\n---\nRun SQL migration\n",
+            encoding="utf-8",
+        )
+        (tickets_dir / "TICKET-002.md").write_text(
+            "---\ntitle: Already done\ndone: true\n---\nDone\n",
+            encoding="utf-8",
+        )
+
+        run_id = await run_ticket_flow(tmp_path, CmcsConfig(), db)
+        run_record = db.get_run(run_id)
+        events = db.get_events(run_id)
+    finally:
+        db.close()
+
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+    assert events == []

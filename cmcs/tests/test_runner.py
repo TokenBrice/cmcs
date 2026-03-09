@@ -239,6 +239,61 @@ def test_run_creates_json_log(tmp_path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_skips_human_agent_tickets(tmp_path) -> None:
+    """run_ticket_flow should skip tickets with agent != 'codex'."""
+    import subprocess
+
+    subprocess.run(["git", "init", str(tmp_path)], capture_output=True, check=True)
+    subprocess.run(["git", "-C", str(tmp_path), "checkout", "-B", "master"], capture_output=True, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "-c",
+            "user.name=test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "--allow-empty",
+            "-m",
+            "init",
+        ],
+        capture_output=True,
+        check=True,
+    )
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "master")
+
+        tickets_dir = tmp_path / ".cmcs" / "tickets"
+        tickets_dir.mkdir(parents=True, exist_ok=True)
+
+        (tickets_dir / "TICKET-001.md").write_text(
+            "---\ntitle: Manual migration\nagent: human\ndone: false\n---\nRun SQL migration\n",
+            encoding="utf-8",
+        )
+        (tickets_dir / "TICKET-002.md").write_text(
+            "---\ntitle: Already done\ndone: true\n---\nDone\n",
+            encoding="utf-8",
+        )
+
+        cfg = CmcsConfig()
+        run_id = await run_ticket_flow(tmp_path, cfg, db)
+
+        run_record = db.get_run(run_id)
+        events = db.get_events(run_id)
+    finally:
+        db.close()
+
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+    assert len(events) == 0
+
+
+@pytest.mark.asyncio
 async def test_run_single_ticket_timeout(tmp_path, monkeypatch) -> None:
     db = Database(tmp_path / "cmcs.db")
     db.initialize()
