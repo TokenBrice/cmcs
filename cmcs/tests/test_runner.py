@@ -95,6 +95,15 @@ def test_build_codex_args_no_existing_effort() -> None:
     assert args == ["--yolo", "exec", "-c", "reasoning_effort=low"]
 
 
+def test_configurable_command() -> None:
+    """Runner should use config.codex.command instead of hardcoded 'codex'."""
+    from cmcs.config import CodexConfig
+
+    cfg = CmcsConfig(codex=CodexConfig(command="echo"))
+
+    assert cfg.codex.command == "echo"
+
+
 def test_recover_orphans_marks_dead_runs(tmp_path) -> None:
     db = Database(tmp_path / "cmcs.db")
     db.initialize()
@@ -173,6 +182,60 @@ def test_run_records_subprocess_pid(tmp_path, monkeypatch) -> None:
     assert run_record is not None
     assert run_record["worker_pid"] is not None
     assert run_record["worker_pid"] != os.getpid()
+
+
+def test_run_creates_json_log(tmp_path, monkeypatch) -> None:
+    """Each ticket execution should produce a .json summary log."""
+    import asyncio
+    import json
+    import stat
+
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nTest\n",
+        encoding="utf-8",
+    )
+
+    codex_script = tmp_path / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "prompt = sys.argv[-1]\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found in prompt')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "test")
+        run_id = asyncio.run(run_ticket_flow(tmp_path, CmcsConfig(), db))
+    finally:
+        db.close()
+
+    log_dir = tmp_path / ".cmcs" / "logs" / str(run_id)
+    json_files = list(log_dir.glob("*.json"))
+
+    assert len(json_files) == 1
+
+    summary = json.loads(json_files[0].read_text(encoding="utf-8"))
+
+    assert summary["ticket"] == "TICKET-001.md"
+    assert "duration_s" in summary
+    assert "exit_code" in summary
 
 
 @pytest.mark.asyncio

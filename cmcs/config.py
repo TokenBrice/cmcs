@@ -12,6 +12,7 @@ import yaml
 @dataclass
 class CodexConfig:
     model: str = "gpt-5.3-codex"
+    command: str = "codex"
     timeout_s: int = 1800
     args: list[str] = field(
         default_factory=lambda: [

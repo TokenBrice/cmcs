@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from pathlib import Path
@@ -132,10 +133,13 @@ async def _run_single_ticket(
     stdout_path = log_dir / f"{ticket_stem}.stdout"
     stderr_path = log_dir / f"{ticket_stem}.stderr"
 
+    started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     started = time.monotonic()
+    exit_code = -1
+    duration = config.codex.timeout_s
     with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
         process = await asyncio.create_subprocess_exec(
-            "codex",
+            config.codex.command,
             *args,
             "-m",
             model,
@@ -149,40 +153,31 @@ async def _run_single_ticket(
             exit_code = await asyncio.wait_for(
                 process.wait(), timeout=config.codex.timeout_s
             )
+            duration = time.monotonic() - started
         except asyncio.TimeoutError:
             process.kill()
             await process.wait()
-            db.record_event(
-                run_id,
-                ticket.filename,
-                "failed",
-                model=model,
-                exit_code=-1,
-                duration_s=config.codex.timeout_s,
-            )
-            return False
-    duration = time.monotonic() - started
-
-    if exit_code == 0:
-        db.record_event(
-            run_id,
-            ticket.filename,
-            "completed",
-            model=model,
-            exit_code=exit_code,
-            duration_s=duration,
-        )
-        return True
+    summary = {
+        "ticket": ticket.filename,
+        "model": model,
+        "exit_code": exit_code,
+        "duration_s": round(duration, 2),
+        "started_at": started_at,
+        "stdout_path": str(stdout_path),
+        "stderr_path": str(stderr_path),
+    }
+    summary_path = log_dir / f"{ticket_stem}.json"
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     db.record_event(
         run_id,
         ticket.filename,
-        "failed",
+        "completed" if exit_code == 0 else "failed",
         model=model,
         exit_code=exit_code,
         duration_s=duration,
     )
-    return False
+    return exit_code == 0
 
 
 async def run_ticket_flow(repo_path: Path, config: CmcsConfig, db: Database) -> int:
