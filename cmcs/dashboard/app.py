@@ -61,14 +61,17 @@ def create_app(repo_root: Path) -> FastAPI:
         return _database().list_worktrees()
 
     @app.get("/api/runs")
-    async def runs() -> list[dict[str, Any]]:
+    async def runs(limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         dashboard_db = _database()
         recover_orphans(dashboard_db)
+        all_runs = dashboard_db.all_runs()
+        paginated = all_runs[offset : offset + limit]
         enriched: list[dict[str, Any]] = []
-        for run in dashboard_db.all_runs():
+        for run in paginated:
             events = dashboard_db.get_events(int(run["id"]))
             tickets_done, tickets_total = _ticket_counts(events)
             row = dict(run)
+            row["events"] = events
             row["tickets_done"] = tickets_done
             row["tickets_total"] = tickets_total
             enriched.append(row)

@@ -62,6 +62,51 @@ def test_runs(tmp_path: Path) -> None:
     assert payload[0]["tickets_total"] == 1
 
 
+def test_runs_include_events(tmp_path: Path) -> None:
+    """API /api/runs should include events in each run."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    run_id = db.create_run("/tmp/wt", worker_pid=1)
+    db.record_event(run_id, "TICKET-001", "started", model="test")
+    db.close()
+
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/runs")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == 1
+    assert "events" in data[0]
+    assert len(data[0]["events"]) == 1
+
+
+def test_runs_pagination(tmp_path: Path) -> None:
+    """API /api/runs should support limit and offset."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    for i in range(5):
+        run_id = db.create_run("/tmp/wt", worker_pid=i)
+        db.finish_run(run_id, "completed")
+    db.close()
+
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/runs?limit=2&offset=0")
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+
+        response = test_client.get("/api/runs?limit=2&offset=3")
+        assert response.status_code == 200
+        assert len(response.json()) == 2
+
+
 def test_run_events(tmp_path: Path) -> None:
     _seed_dashboard_db(tmp_path)
     with TestClient(create_app(tmp_path)) as test_client:

@@ -240,8 +240,12 @@
 
     async function refresh() {
       try {
-        const [runs, worktrees] = await Promise.all([fetchJson("/api/runs"), fetchJson("/api/worktrees")]);
-        const eventsByRun = Object.fromEntries(await Promise.all(runs.map(async (run) => [run.id, await fetchJson(`/api/runs/${run.id}/events`)])));
+        const [runs, worktrees] = await Promise.all([
+          fetchJson("/api/runs"),
+          fetchJson("/api/worktrees"),
+        ]);
+        // Events are now inlined in each run object.
+        const eventsByRun = Object.fromEntries(runs.map((run) => [run.id, run.events || []]));
         const worktreesByPath = Object.fromEntries(worktrees.map((wt) => [wt.path, wt]));
         renderAgents(runs, worktreesByPath, eventsByRun);
         renderEvents(runs, eventsByRun);
