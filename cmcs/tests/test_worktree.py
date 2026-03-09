@@ -6,6 +6,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
 from cmcs.worktree import cleanup_worktree, create_worktree, list_worktrees, reconcile_worktrees
@@ -87,6 +89,51 @@ def test_cleanup_worktree(tmp_path: Path) -> None:
     worktrees = database.list_worktrees()
     assert len(worktrees) == 1
     assert worktrees[0]["status"] == "archived"
+
+
+def test_cleanup_worktree_safe_delete_fails_on_unmerged(tmp_path: Path) -> None:
+    repo = git_repo(tmp_path)
+    database = db(tmp_path)
+    cfg = CmcsConfig()
+    wt_path = create_worktree(repo, "unmerged-branch", cfg, database)
+
+    (wt_path / "newfile.txt").write_text("content", encoding="utf-8")
+
+    subprocess.run(
+        ["git", "-C", str(wt_path), "add", "."],
+        capture_output=True,
+        check=True,
+    )
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+    subprocess.run(
+        ["git", "-C", str(wt_path), "commit", "-m", "unmerged"],
+        capture_output=True,
+        check=True,
+        env=env,
+    )
+
+    with pytest.raises(RuntimeError, match="unmerged"):
+        cleanup_worktree(repo, "unmerged-branch", database, force=False)
+
+    # Worktree was removed but branch persists (unmerged); DB was archived
+    assert not wt_path.exists()
+    worktrees = database.list_worktrees()
+    assert any(w["branch"] == "unmerged-branch" and w["status"] == "archived" for w in worktrees)
+
+    # Force-delete the branch directly (cleanup already archived the DB entry)
+    subprocess.run(
+        ["git", "branch", "-D", "unmerged-branch"],
+        cwd=repo,
+        capture_output=True,
+        check=True,
+    )
 
 
 def test_reconcile_registers_orphaned_worktrees(tmp_path: Path) -> None:

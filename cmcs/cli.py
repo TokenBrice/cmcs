@@ -67,9 +67,14 @@ def _tail_text(path: Path, size: int = 4096) -> str:
     with path.open("rb") as handle:
         handle.seek(0, os.SEEK_END)
         end = handle.tell()
-        handle.seek(max(0, end - size), os.SEEK_SET)
+        start = max(0, end - size)
+        handle.seek(start, os.SEEK_SET)
         chunk = handle.read()
-    return chunk.decode("utf-8", errors="replace")
+
+    i = 0
+    while i < len(chunk) and i < 4 and (chunk[i] & 0xC0) == 0x80:
+        i += 1
+    return chunk[i:].decode("utf-8", errors="replace")
 
 
 app.add_typer(worktree_app, name="worktree")
@@ -125,6 +130,7 @@ def worktree_list() -> None:
     db = _db()
     db.initialize()
     try:
+        recover_orphans(db)
         worktrees = db.list_worktrees()
         if not worktrees:
             typer.echo("No worktrees registered.")
@@ -140,13 +146,16 @@ def worktree_list() -> None:
 
 
 @worktree_app.command("cleanup")
-def worktree_cleanup(branch: str) -> None:
+def worktree_cleanup(
+    branch: str,
+    force: bool = typer.Option(False, "--force", help="Force-delete even if branch has unmerged changes"),
+) -> None:
     """Remove a worktree and archive it in the database."""
     _ensure_initialized()
     db = _db()
     db.initialize()
     try:
-        _cleanup_worktree(_repo_root(), branch, db)
+        _cleanup_worktree(_repo_root(), branch, db, force=force)
     finally:
         db.close()
     typer.echo(f"Cleaned up worktree for branch: {branch}")
@@ -246,6 +255,7 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
     db = _db()
     db.initialize()
     try:
+        recover_orphans(db)
         running = [
             run_row
             for run_row in db.get_running_runs()
@@ -264,6 +274,21 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
                 pass
             except PermissionError:
                 typer.echo(f"Unable to signal pid {pid}; marking run stopped anyway.", err=True)
+            else:
+                # Wait briefly for graceful shutdown before escalating.
+                for _ in range(10):
+                    time.sleep(0.5)
+                    try:
+                        os.kill(pid, 0)
+                    except ProcessLookupError:
+                        break
+                    except PermissionError:
+                        break
+                else:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except (ProcessLookupError, PermissionError):
+                        pass
 
         db.finish_run(int(run_row["id"]), "stopped")
         typer.echo(f"Stopped run {run_row['id']}")
@@ -279,6 +304,7 @@ def logs(path: str = typer.Argument(..., help="Worktree path")) -> None:
     db = _db()
     db.initialize()
     try:
+        recover_orphans(db)
         run_row = db.get_latest_run(target)
     finally:
         db.close()
