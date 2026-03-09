@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-09
+
+Operational improvements from Pharos codebase audit learnings: auto-commit, fallback retry, model guidance consolidation. Test count 106 → 119.
+
 ### Added
 
 - `codex.auto_commit` config option — auto-commits worktree after successful ticket (default: `true`)
 - `codex.fallback_model` config option — retries failed tickets with fallback model on context/output-token limit errors
 - `cmcs ticket validate` warns when spark model is assigned to tickets referencing 8+ files
 - `docs/model-selection.md` — consolidated model selection guide with catalog, heuristics, and failure modes
+
+### Fixed
+
+- Dashboard log boxes not scrollable (added `max-height` + `overflow: auto`)
 
 ### Changed
 
@@ -98,6 +106,7 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 - Documentation: architecture guide, orchestration playbook, configuration reference, full ticket example
 - Project logo (SVG and PNG)
 
+[0.3.0]: https://github.com/TokenBrice/cmcs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/TokenBrice/cmcs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/TokenBrice/cmcs/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/TokenBrice/cmcs/releases/tag/v0.1.0
