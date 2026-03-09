@@ -53,6 +53,20 @@ other changes. Include any architectural context the agent needs.]
 - [Specific behavioral checks relevant to this ticket]
 ```
 
+## Validation
+
+After writing tickets, validate them before dispatching:
+
+```bash
+cmcs ticket validate <worktree-path>
+```
+
+This checks for:
+- Missing or empty `title` fields
+- Empty `model` strings
+- Spark model assigned to tickets referencing 8+ files (likely to hit output-token limits)
+- Malformed YAML frontmatter
+
 ## Model & Reasoning Effort Guide
 
 See the [Model Selection Guide](../docs/model-selection.md) for model catalog, selection heuristics, reasoning effort levels, and known failure modes.
@@ -66,6 +80,7 @@ See the [Model Selection Guide](../docs/model-selection.md) for model catalog, s
 5. **Reference data artifacts inline.** If a ticket needs a mapping table, tell Codex exactly where to find it — and make sure the file is copied into the worktree.
 6. **One logical change per ticket.** If a ticket does two independent things, split it. Codex performs best on narrowly focused tasks.
 7. **List every file explicitly.** Never say "update all files that use X" — enumerate them with paths and line numbers.
+8. **Validate before dispatching.** Run `cmcs ticket validate` after writing tickets to catch formatting issues and model/scope mismatches early.
 
 ## Fix Tickets
 
@@ -104,3 +119,34 @@ The previous ticket (TICKET-NNN) implemented [feature]. Review found:
 ```
 
 Fix tickets should use lighter models/effort since the problem is already well-defined.
+
+## Human Tickets
+
+Use `agent: "human"` for manual steps that cmcs should skip but that belong in the ticket sequence for documentation:
+
+```markdown
+---
+title: "Run database migration"
+agent: "human"
+done: false
+---
+
+## Runbook
+
+1. Connect to production database
+2. Run `ALTER TABLE ...`
+3. Verify with `SELECT COUNT(*) FROM ...`
+4. Set `done: true` when complete
+```
+
+cmcs skips any ticket where `agent` is not `"codex"`. These `human` tickets serve as documented checkpoints in a sequential ticket chain.
+
+## Sequential Ticket Context
+
+When running sequential tickets in a worktree (TICKET-001, TICKET-002, ...), cmcs automatically passes the `## Progress` section from the previous completed ticket to the next agent. This means:
+
+- The next agent knows what the previous agent did
+- You don't need to repeat context that was already established
+- Carry forward the prior ticket's `## Progress` details instead of restating completed work
+- Design your sequential tickets to build on each other, knowing the agent will receive prior progress
+- The first ticket in a sequence gets no prior context — make it fully self-contained
