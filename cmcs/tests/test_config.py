@@ -113,10 +113,7 @@ def test_load_config_invalid_port_type(tmp_path: Path) -> None:
 
     cfg = load_config(tmp_path)
 
-    if isinstance(cfg.dashboard.port, int):
-        assert cfg.dashboard.port == 4173
-    else:
-        assert cfg.dashboard.port == "not-a-number"
+    assert cfg.dashboard.port == 4173
 
 
 def test_load_config_empty_model(tmp_path: Path) -> None:
@@ -127,7 +124,29 @@ def test_load_config_empty_model(tmp_path: Path) -> None:
 
     cfg = load_config(tmp_path)
 
-    assert cfg.codex.model in {"", "gpt-5.3-codex"}
+    assert cfg.codex.model == "gpt-5.3-codex"
+
+
+def test_load_config_non_list_args(tmp_path: Path) -> None:
+    """Non-list args should fall back to defaults."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("codex:\n  args: not-a-list\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.codex.args == ["--yolo", "exec", "--sandbox", "danger-full-access", "-c", "reasoning_effort=xhigh"]
+
+
+def test_load_config_port_string_number(tmp_path: Path) -> None:
+    """String port containing digits should be coerced to int."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+    (cmcs_dir / "config.yml").write_text("dashboard:\n  port: '8080'\n", encoding="utf-8")
+
+    cfg = load_config(tmp_path)
+
+    assert cfg.dashboard.port == 8080
 
 
 def test_load_config_non_mapping_top_level(tmp_path: Path) -> None:

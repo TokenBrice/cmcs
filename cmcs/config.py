@@ -86,6 +86,31 @@ def load_config(repo_root: Path) -> CmcsConfig:
             return cls()
         known_fields = set(cls.__dataclass_fields__)
         filtered = {key: value for key, value in data.items() if key in known_fields and value is not None}
+
+        # Type coercion for known problematic fields.
+        defaults = cls()
+        for key, value in list(filtered.items()):
+            field_obj = cls.__dataclass_fields__[key]
+            expected_type = field_obj.type
+
+            # Coerce int fields.
+            if expected_type == "int" or expected_type is int:
+                try:
+                    filtered[key] = int(value)
+                except (TypeError, ValueError):
+                    filtered.pop(key)
+
+            # Reject empty strings for str fields with non-empty string defaults.
+            elif (expected_type == "str" or expected_type is str) and isinstance(value, str) and not value.strip():
+                default_val = getattr(defaults, key)
+                if isinstance(default_val, str) and default_val:
+                    filtered.pop(key)
+
+            # Require list-like fields to be actual lists.
+            elif "list" in str(expected_type).lower():
+                if not isinstance(value, list):
+                    filtered.pop(key)
+
         return cls(**filtered)
 
     return CmcsConfig(
