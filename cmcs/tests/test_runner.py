@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 
@@ -137,19 +138,21 @@ def test_recover_orphans_skips_alive_pids(tmp_path) -> None:
     assert run["status"] == "running"
 
 
-def test_run_records_subprocess_pid(tmp_path, monkeypatch) -> None:
+def test_run_records_subprocess_pid(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """run_ticket_flow should store the spawned codex subprocess PID."""
     import asyncio
     import stat
 
-    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir = git_repo / ".cmcs" / "tickets"
     tickets_dir.mkdir(parents=True, exist_ok=True)
     (tickets_dir / "TICKET-001.md").write_text(
         "---\ntitle: test\ndone: false\n---\nDo nothing\n",
         encoding="utf-8",
     )
 
-    codex_script = tmp_path / "codex"
+    codex_script = git_repo / "codex"
     codex_script.write_text(
         (
             "#!/usr/bin/env python3\n"
@@ -168,36 +171,33 @@ def test_run_records_subprocess_pid(tmp_path, monkeypatch) -> None:
     )
     codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
 
-    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
 
-    db = Database(tmp_path / ".cmcs" / "cmcs.db")
-    db.initialize()
-    try:
-        db.register_worktree(str(tmp_path), "test")
-        run_id = asyncio.run(run_ticket_flow(tmp_path, CmcsConfig(), db))
-        run_record = db.get_run(run_id)
-    finally:
-        db.close()
+    db.register_worktree(str(git_repo), "test")
+    run_id = asyncio.run(run_ticket_flow(git_repo, CmcsConfig(), db))
+    run_record = db.get_run(run_id)
 
     assert run_record is not None
     assert run_record["worker_pid"] is not None
     assert run_record["worker_pid"] != os.getpid()
 
 
-def test_run_creates_json_log(tmp_path, monkeypatch) -> None:
+def test_run_creates_json_log(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """Each ticket execution should produce a .json summary log."""
     import asyncio
     import json
     import stat
 
-    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir = git_repo / ".cmcs" / "tickets"
     tickets_dir.mkdir(parents=True, exist_ok=True)
     (tickets_dir / "TICKET-001.md").write_text(
         "---\ntitle: test\ndone: false\n---\nTest\n",
         encoding="utf-8",
     )
 
-    codex_script = tmp_path / "codex"
+    codex_script = git_repo / "codex"
     codex_script.write_text(
         (
             "#!/usr/bin/env python3\n"
@@ -216,17 +216,12 @@ def test_run_creates_json_log(tmp_path, monkeypatch) -> None:
     )
     codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
 
-    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
 
-    db = Database(tmp_path / ".cmcs" / "cmcs.db")
-    db.initialize()
-    try:
-        db.register_worktree(str(tmp_path), "test")
-        run_id = asyncio.run(run_ticket_flow(tmp_path, CmcsConfig(), db))
-    finally:
-        db.close()
+    db.register_worktree(str(git_repo), "test")
+    run_id = asyncio.run(run_ticket_flow(git_repo, CmcsConfig(), db))
 
-    log_dir = tmp_path / ".cmcs" / "logs" / str(run_id)
+    log_dir = git_repo / ".cmcs" / "logs" / str(run_id)
     json_files = list(log_dir.glob("*.json"))
 
     assert len(json_files) == 1
@@ -239,54 +234,27 @@ def test_run_creates_json_log(tmp_path, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_skips_human_agent_tickets(tmp_path) -> None:
+async def test_skips_human_agent_tickets(git_repo: Path, db: Database) -> None:
     """run_ticket_flow should skip tickets with agent != 'codex'."""
-    import subprocess
+    db.register_worktree(str(git_repo), "master")
 
-    subprocess.run(["git", "init", str(tmp_path)], capture_output=True, check=True)
-    subprocess.run(["git", "-C", str(tmp_path), "checkout", "-B", "master"], capture_output=True, check=True)
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(tmp_path),
-            "-c",
-            "user.name=test",
-            "-c",
-            "user.email=test@example.com",
-            "commit",
-            "--allow-empty",
-            "-m",
-            "init",
-        ],
-        capture_output=True,
-        check=True,
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: Manual migration\nagent: human\ndone: false\n---\nRun SQL migration\n",
+        encoding="utf-8",
+    )
+    (tickets_dir / "TICKET-002.md").write_text(
+        "---\ntitle: Already done\ndone: true\n---\nDone\n",
+        encoding="utf-8",
     )
 
-    db = Database(tmp_path / ".cmcs" / "cmcs.db")
-    db.initialize()
-    try:
-        db.register_worktree(str(tmp_path), "master")
+    cfg = CmcsConfig()
+    run_id = await run_ticket_flow(git_repo, cfg, db)
 
-        tickets_dir = tmp_path / ".cmcs" / "tickets"
-        tickets_dir.mkdir(parents=True, exist_ok=True)
-
-        (tickets_dir / "TICKET-001.md").write_text(
-            "---\ntitle: Manual migration\nagent: human\ndone: false\n---\nRun SQL migration\n",
-            encoding="utf-8",
-        )
-        (tickets_dir / "TICKET-002.md").write_text(
-            "---\ntitle: Already done\ndone: true\n---\nDone\n",
-            encoding="utf-8",
-        )
-
-        cfg = CmcsConfig()
-        run_id = await run_ticket_flow(tmp_path, cfg, db)
-
-        run_record = db.get_run(run_id)
-        events = db.get_events(run_id)
-    finally:
-        db.close()
+    run_record = db.get_run(run_id)
+    events = db.get_events(run_id)
 
     assert run_record is not None
     assert run_record["status"] == "completed"
