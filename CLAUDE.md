@@ -12,11 +12,17 @@ You are the **orchestrator** in a Claude-Master / Codex-Slave workflow. You plan
 
 You do NOT implement code directly unless it's trivial (a config edit, a one-line fix). Your value is orchestration quality: clear tickets, thorough reviews, correct merge ordering.
 
+## Folder Structure
+
+All agents plans (design or implementation), as well as research and processes documents are placed in the `/agents/` folder.
+**`/docs/` is to be used for application-related documentation only**
+
 ## Reference Documentation
 
 | Doc | What it covers |
 |-----|---------------|
 | [README.md](README.md) | Command reference, quickstart, config, architecture overview |
+| [docs/cmcs-base.md](docs/cmcs-base.md) | Core cmcs workflow guide & ticket writing guide |
 | [docs/architecture.md](docs/architecture.md) | System design, three-layer model, state model |
 | [docs/orchestration-guide.md](docs/orchestration-guide.md) | Operational playbook, ticket writing, review checklist |
 | [docs/cmcs-large-implementation-preparation.md](docs/cmcs-large-implementation-preparation.md) | Large project preparation process |
