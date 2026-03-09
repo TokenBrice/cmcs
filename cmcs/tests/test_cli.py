@@ -93,6 +93,19 @@ def test_repo_root_resolves_from_worktree(
     assert resolved == git_repo.resolve()
 
 
+def test_repo_root_caching(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """_repo_root should return consistent results and cache."""
+    monkeypatch.chdir(git_repo)
+    from cmcs import cli
+
+    cli._cached_repo_root = None
+    r1 = cli._repo_root()
+    r2 = cli._repo_root()
+    assert r1 == r2
+
+
 def test_init_reconciles_orphaned_worktrees(
     git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

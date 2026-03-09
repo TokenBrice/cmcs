@@ -7,7 +7,7 @@ import json
 import os
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
@@ -18,7 +18,7 @@ def build_prompt(
     ticket: Ticket,
     repo_path: str,
     ticket_path: str,
-    previous_progress: Optional[str],
+    previous_progress: str | None,
 ) -> str:
     """Construct the worker prompt for a ticket run."""
     lines = [
@@ -42,7 +42,7 @@ def build_prompt(
     return "\n".join(lines)
 
 
-def _pid_alive(pid: Optional[int]) -> bool:
+def _pid_alive(pid: int | None) -> bool:
     if pid is None or pid <= 0:
         return False
     try:
@@ -71,9 +71,9 @@ def _find_in_progress_ticket(events: list[dict[str, Any]]) -> str:
     return "unknown"
 
 
-def recover_orphans(db: Database) -> List[Dict[str, Any]]:
+def recover_orphans(db: Database) -> list[dict[str, Any]]:
     """Mark dead running runs as interrupted and return recovery details."""
-    recovered: List[Dict[str, Any]] = []
+    recovered: list[dict[str, Any]] = []
     for run in db.get_running_runs():
         if _pid_alive(run.get("worker_pid")):
             continue

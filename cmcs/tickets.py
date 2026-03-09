@@ -6,7 +6,6 @@ import re
 import warnings
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import yaml
 
@@ -19,8 +18,8 @@ class Ticket:
     done: bool
     body: str
     raw: str
-    model: Optional[str] = None
-    reasoning_effort: Optional[str] = None
+    model: str | None = None
+    reasoning_effort: str | None = None
 
 
 _FRONTMATTER_PATTERN = re.compile(
@@ -99,9 +98,9 @@ def discover_tickets(tickets_dir: Path) -> list[Ticket]:
     return tickets
 
 
-def get_previous_progress(tickets: list[Ticket], current_filename: str) -> Optional[str]:
+def get_previous_progress(tickets: list[Ticket], current_filename: str) -> str | None:
     """Extract the previous ticket's ## Progress section through end of file."""
-    previous: Optional[Ticket] = None
+    previous: Ticket | None = None
     for ticket in tickets:
         if ticket.filename == current_filename:
             break

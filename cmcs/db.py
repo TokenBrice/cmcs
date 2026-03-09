@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from types import TracebackType
-from typing import Any, Optional
+from typing import Any
 
 
 class Database:
@@ -101,7 +101,7 @@ class Database:
         )
         self._conn.commit()
 
-    def get_run(self, run_id: int) -> Optional[dict[str, Any]]:
+    def get_run(self, run_id: int) -> dict[str, Any] | None:
         """Fetch a run by ID."""
         row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()
         return dict(row) if row is not None else None
@@ -121,7 +121,7 @@ class Database:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def get_latest_run(self, worktree: str) -> Optional[dict[str, Any]]:
+    def get_latest_run(self, worktree: str) -> dict[str, Any] | None:
         """Return the latest run for a worktree."""
         row = self._conn.execute(
             """
@@ -144,9 +144,9 @@ class Database:
         run_id: int,
         ticket: str,
         event: str,
-        model: Optional[str] = None,
-        exit_code: Optional[int] = None,
-        duration_s: Optional[float] = None,
+        model: str | None = None,
+        exit_code: int | None = None,
+        duration_s: float | None = None,
     ) -> None:
         """Record a run event."""
         self._conn.execute(

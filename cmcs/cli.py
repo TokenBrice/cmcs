@@ -9,7 +9,6 @@ import subprocess
 import time
 from dataclasses import asdict
 from pathlib import Path
-from typing import Optional
 
 import typer
 import yaml
@@ -30,10 +29,19 @@ worktree_app = typer.Typer(help="Manage git worktrees.")
 config_app = typer.Typer(help="Show effective configuration.")
 ticket_app = typer.Typer(help="Ticket management.")
 
+_cached_repo_root: Path | None = None
+
 
 def _repo_root() -> Path:
     """Resolve the main repo root, even when CWD is inside a git worktree."""
+    global _cached_repo_root
     cwd = Path.cwd()
+    if _cached_repo_root is not None:
+        try:
+            if _cached_repo_root == cwd or _cached_repo_root in cwd.parents:
+                return _cached_repo_root
+        except RuntimeError:
+            pass
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--git-common-dir"],
@@ -45,10 +53,12 @@ def _repo_root() -> Path:
             git_common = Path(result.stdout.strip())
             if not git_common.is_absolute():
                 git_common = (cwd / git_common).resolve()
-            return git_common.parent
+            _cached_repo_root = git_common.parent
+            return _cached_repo_root
     except FileNotFoundError:
         pass
-    return cwd
+    _cached_repo_root = cwd
+    return _cached_repo_root
 
 
 def _db() -> Database:
@@ -334,7 +344,7 @@ def run(
 
 @app.command()
 def status(
-    path: Optional[str] = typer.Argument(None, help="Optional worktree path filter"),
+    path: str | None = typer.Argument(None, help="Worktree path filter"),
     active: bool = typer.Option(False, "--active", help="Show only running runs"),
     latest: bool = typer.Option(
         False, "--latest", help="Show only the latest run per worktree"
@@ -385,7 +395,7 @@ def status(
 @app.command()
 def wait(
     path: str = typer.Argument(..., help="Worktree path"),
-    timeout: Optional[int] = typer.Option(
+    timeout: int | None = typer.Option(
         None, "--timeout", "-t", help="Max seconds to wait"
     ),
 ) -> None:

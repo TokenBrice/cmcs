@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Any
 
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
@@ -36,11 +35,6 @@ def create_worktree(
     (wt_path / ".cmcs" / "tickets").mkdir(parents=True, exist_ok=True)
     db.register_worktree(str(wt_path), branch)
     return wt_path
-
-
-def list_worktrees(db: Database) -> list[dict[str, Any]]:
-    """Return all worktrees from the database."""
-    return db.list_worktrees()
 
 
 def reconcile_worktrees(repo_root: Path, config: CmcsConfig, db: Database) -> int:

@@ -10,7 +10,7 @@ import pytest
 
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
-from cmcs.worktree import cleanup_worktree, create_worktree, list_worktrees, reconcile_worktrees
+from cmcs.worktree import cleanup_worktree, create_worktree, reconcile_worktrees
 
 
 def test_create_worktree(git_repo: Path, db: Database) -> None:
@@ -20,7 +20,7 @@ def test_create_worktree(git_repo: Path, db: Database) -> None:
     assert wt_path.exists()
     assert (wt_path / "README.md").exists()
 
-    worktrees = list_worktrees(db)
+    worktrees = db.list_worktrees()
     assert len(worktrees) == 1
     assert worktrees[0]["path"] == str(wt_path)
     assert worktrees[0]["branch"] == "test-branch"
