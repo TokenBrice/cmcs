@@ -207,6 +207,32 @@ def test_clean_removes_old_logs(
     assert not log_dir.exists()
 
 
+def test_clean_removes_worktree_logs(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """clean command should remove old logs from registered worktrees."""
+    monkeypatch.chdir(git_repo)
+
+    worktree_path = git_repo / "worktrees" / "feature-x"
+    log_dir = worktree_path / ".cmcs" / "logs" / "1"
+    log_dir.mkdir(parents=True)
+    (log_dir / "test.stdout").write_text("old worktree log", encoding="utf-8")
+
+    database = Database(git_repo / ".cmcs" / "cmcs.db")
+    database.initialize()
+    database.register_worktree(str(worktree_path), "feature-x")
+    database.close()
+
+    old_time = time.time() - (60 * 86400)
+    os.utime(log_dir, (old_time, old_time))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["clean", "--logs-days", "30"])
+    assert result.exit_code == 0, result.output
+    assert "Removed 1" in result.output
+    assert not log_dir.exists()
+
+
 def test_run_completes_with_no_tickets(
     git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:

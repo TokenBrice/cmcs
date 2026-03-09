@@ -140,31 +140,39 @@ def clean(
     _ensure_initialized()
     root = _repo_root()
     removed_logs = 0
+    import shutil
+
+    cutoff = time.time() - (logs_older_than * 86400)
 
     logs_dir = root / ".cmcs" / "logs"
     if logs_dir.exists():
-        import shutil
-
-        cutoff = time.time() - (logs_older_than * 86400)
         for log_dir in logs_dir.iterdir():
             if log_dir.is_dir() and log_dir.stat().st_mtime < cutoff:
                 shutil.rmtree(log_dir)
                 removed_logs += 1
 
-    typer.echo(
-        f"Removed {removed_logs} old log director{'y' if removed_logs == 1 else 'ies'}."
-    )
+    db = _db()
+    db.initialize()
+    try:
+        for wt in db.list_worktrees():
+            wt_logs = Path(wt["path"]) / ".cmcs" / "logs"
+            if wt_logs.exists():
+                for log_dir in wt_logs.iterdir():
+                    if log_dir.is_dir() and log_dir.stat().st_mtime < cutoff:
+                        shutil.rmtree(log_dir)
+                        removed_logs += 1
 
-    if purge_archived:
-        db = _db()
-        db.initialize()
-        try:
+        typer.echo(
+            f"Removed {removed_logs} old log director{'y' if removed_logs == 1 else 'ies'}."
+        )
+
+        if purge_archived:
             purged, skipped = db.purge_archived_worktrees()
             typer.echo(f"Purged {purged} archived worktree record(s) from database.")
             if skipped:
                 typer.echo(f"Skipped {skipped} archived worktree(s) with historical runs.")
-        finally:
-            db.close()
+    finally:
+        db.close()
 
 
 @config_app.command("show")
