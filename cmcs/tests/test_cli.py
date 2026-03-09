@@ -42,6 +42,17 @@ def test_config_show(tmp_path: Path) -> None:
         os.chdir(previous)
 
 
+def test_version_command(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """version command should print the package version."""
+    runner = CliRunner()
+    monkeypatch.chdir(git_repo)
+    result = runner.invoke(app, ["version"])
+    assert result.exit_code == 0
+    assert "cmcs" in result.output
+
+
 def test_worktree_create_and_list(
     git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -56,6 +67,11 @@ def test_worktree_create_and_list(
 
     list_result = runner.invoke(app, ["worktree", "list"])
     assert list_result.exit_code == 0, list_result.output
+    assert "\t" not in list_result.output
+    assert "BRANCH" in list_result.output.splitlines()[0]
+    assert "STATUS" in list_result.output
+    assert "LATEST" in list_result.output
+    assert "PATH" in list_result.output
     assert "feature-test" in list_result.output
 
 
@@ -132,6 +148,18 @@ def test_wait_exits_when_no_runs(
     result = runner.invoke(app, ["wait", str(git_repo)])
     assert result.exit_code == 1, result.output
     assert "No runs" in result.output
+
+
+def test_error_messages_include_guidance(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Error messages should suggest next steps."""
+    monkeypatch.chdir(git_repo)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["wait", str(git_repo)])
+    assert result.exit_code == 1, result.output
+    assert "cmcs run" in result.output or "No runs" in result.output
 
 
 def test_wait_exits_when_run_completed(
@@ -345,3 +373,21 @@ def test_status_no_runs(tmp_path: Path) -> None:
         assert "No runs" in status_result.output
     finally:
         os.chdir(previous)
+
+
+def test_status_active_filter(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--active flag should filter to running runs only."""
+    runner = CliRunner()
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    completed_run = db.create_run(str(git_repo), worker_pid=1)
+    db.finish_run(completed_run, "completed")
+    running_run = db.create_run(str(git_repo), worker_pid=os.getpid())
+
+    result = runner.invoke(app, ["status", "--active"])
+
+    assert result.exit_code == 0, result.output
+    assert str(running_run) in result.output
+    assert "completed" not in result.output

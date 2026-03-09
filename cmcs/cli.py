@@ -77,6 +77,20 @@ def _tail_text(path: Path, size: int = 4096) -> str:
     return chunk[i:].decode("utf-8", errors="replace")
 
 
+_STATUS_COLORS = {
+    "running": typer.colors.GREEN,
+    "completed": typer.colors.WHITE,
+    "failed": typer.colors.RED,
+    "interrupted": typer.colors.YELLOW,
+    "stopped": typer.colors.YELLOW,
+}
+
+
+def _colored_status(status: str) -> str:
+    color = _STATUS_COLORS.get(status, typer.colors.WHITE)
+    return typer.style(status, fg=color)
+
+
 app.add_typer(worktree_app, name="worktree")
 app.add_typer(config_app, name="config")
 
@@ -109,6 +123,14 @@ def config_show() -> None:
     typer.echo(rendered.rstrip())
 
 
+@app.command()
+def version() -> None:
+    """Print the cmcs version."""
+    from importlib.metadata import version as pkg_version
+
+    typer.echo(f"cmcs {pkg_version('cmcs')}")
+
+
 @worktree_app.command("create")
 def worktree_create(branch: str) -> None:
     """Create a worktree and register it in the database."""
@@ -136,11 +158,12 @@ def worktree_list() -> None:
             typer.echo("No worktrees registered.")
             return
 
-        typer.echo("BRANCH\tSTATUS\tLATEST\tPATH")
+        typer.echo(f"{'BRANCH':<25} {'STATUS':<10} {'LATEST':<12} PATH")
         for wt in worktrees:
             latest = db.get_latest_run(str(wt["path"]))
             latest_status = latest["status"] if latest else "no runs"
-            typer.echo(f"{wt['branch']}\t{wt['status']}\t{latest_status}\t{wt['path']}")
+            colored_latest = _colored_status(latest_status) if latest else latest_status
+            typer.echo(f"{wt['branch']:<25} {wt['status']:<10} {colored_latest:<12} {wt['path']}")
     finally:
         db.close()
 
@@ -194,6 +217,10 @@ def run(path: str = typer.Argument(".", help="Repo/worktree path")) -> None:
 @app.command()
 def status(
     path: Optional[str] = typer.Argument(None, help="Optional worktree path filter"),
+    active: bool = typer.Option(False, "--active", help="Show only running runs"),
+    latest: bool = typer.Option(
+        False, "--latest", help="Show only the latest run per worktree"
+    ),
 ) -> None:
     """Show run status and ticket counts."""
     _ensure_initialized()
@@ -207,19 +234,31 @@ def status(
             target = str(Path(path).resolve())
             runs = [run for run in db.all_runs() if str(run["worktree"]) == target]
 
+        if active:
+            runs = [run for run in runs if run["status"] == "running"]
+        if latest:
+            # Keep only the latest run per worktree.
+            seen = {}
+            for run in reversed(runs):
+                worktree = str(run["worktree"])
+                if worktree not in seen:
+                    seen[worktree] = run
+            runs = list(seen.values())
+
         if not runs:
             typer.echo("No runs found.")
             return
 
+        typer.echo(f"{'ID':<6} {'STATUS':<12} {'STARTED':>10} {'DONE':>5} {'FAIL':>5} WORKTREE")
         for run_row in runs:
             events = db.get_events(int(run_row["id"]))
             started = sum(1 for event in events if event["event"] == "started")
             completed = sum(1 for event in events if event["event"] == "completed")
             failed = sum(1 for event in events if event["event"] == "failed")
+            status_str = _colored_status(run_row["status"])
+            worktree_name = Path(run_row["worktree"]).name
             typer.echo(
-                f"Run {run_row['id']}: {run_row['status']} "
-                f"(tickets started={started}, completed={completed}, failed={failed}) "
-                f"worktree={run_row['worktree']}"
+                f"{run_row['id']:<6} {status_str:<12} {started:>10} {completed:>5} {failed:>5} {worktree_name}"
             )
     finally:
         db.close()
@@ -237,10 +276,13 @@ def wait(path: str = typer.Argument(..., help="Worktree path")) -> None:
             recover_orphans(db)
             run_row = db.get_latest_run(target)
             if run_row is None:
-                typer.echo(f"No runs for {target}")
+                typer.echo(
+                    f"No runs for {target}. Use 'cmcs run {path}' to start a run.",
+                    err=True,
+                )
                 raise typer.Exit(code=1)
             if run_row["status"] != "running":
-                typer.echo(f"Run {run_row['id']} is {run_row['status']}")
+                typer.echo(f"Run {run_row['id']} is {_colored_status(run_row['status'])}")
                 return
             time.sleep(1)
     finally:
@@ -262,7 +304,10 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
             if str(run_row["worktree"]) == target
         ]
         if not running:
-            typer.echo("No running flow for this path.")
+            typer.echo(
+                "No running flow for this path. Use 'cmcs status' to check run states.",
+                err=True,
+            )
             raise typer.Exit(code=1)
 
         run_row = sorted(running, key=lambda row: int(row["id"]))[-1]
@@ -291,7 +336,7 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
                         pass
 
         db.finish_run(int(run_row["id"]), "stopped")
-        typer.echo(f"Stopped run {run_row['id']}")
+        typer.echo(f"Stopped run {run_row['id']}: {_colored_status('stopped')}")
     finally:
         db.close()
 
@@ -310,17 +355,26 @@ def logs(path: str = typer.Argument(..., help="Worktree path")) -> None:
         db.close()
 
     if run_row is None:
-        typer.echo("No runs for this path.")
+        typer.echo(
+            "No runs for this path. Use 'cmcs run <path>' to start a run.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     log_dir = Path(run_row["worktree"]) / ".cmcs" / "logs" / str(run_row["id"])
     if not log_dir.exists():
-        typer.echo("No log artifacts found.")
+        typer.echo(
+            f"No log artifacts found at {log_dir}. The run may not have produced output.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     log_files = sorted(path for path in log_dir.iterdir() if path.is_file())
     if not log_files:
-        typer.echo("No log artifacts found.")
+        typer.echo(
+            f"No log artifacts found at {log_dir}. The run may not have produced output.",
+            err=True,
+        )
         raise typer.Exit(code=1)
 
     for log_file in log_files:
