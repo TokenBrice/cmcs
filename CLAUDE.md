@@ -91,13 +91,17 @@ cmcs dashboard
 
 ### Review Protocol
 
-After every ticket completion:
+Two-stage review after every ticket completion:
 
-1. Read every file Codex created or modified
-2. Run acceptance criteria commands yourself — do not trust self-reported progress
-3. Check: correct paths, clean code, no security issues, imports work, tests are meaningful
-4. If issues: rewrite ticket with clearer instructions, re-dispatch
-5. If clean: commit, move on
+**Stage 1 — Spec review:**
+1. Does the output match the ticket contract? Missing fields, wrong signatures, unmet acceptance criteria.
+2. Run acceptance criteria commands yourself — do not trust self-reported progress.
+
+**Stage 2 — Quality review:**
+1. Read every file Codex created or modified.
+2. Check: correct paths, clean code, no security issues, imports work, tests are meaningful, SQL/data patterns (N+1, INSERT OR REPLACE vs ON CONFLICT).
+3. If issues: rewrite ticket with clearer instructions, re-dispatch.
+4. If clean: commit, move on.
 
 ## Constraints
 
@@ -121,7 +125,7 @@ After every ticket completion:
 │   ├── tickets.py                 ← ticket parsing + discovery
 │   ├── worktree.py                ← git worktree management
 │   ├── dashboard/                 ← web UI (FastAPI + self-contained HTML)
-│   └── tests/                     ← 35 tests (unit + integration)
+│   └── tests/                     ← 46 tests (unit + integration)
 ├── skill/                         ← Claude Code skill (installable by adopters)
 ├── docs/                          ← architecture + orchestration guide
 ├── worktrees/                     ← parallel agent workspaces (gitignored)

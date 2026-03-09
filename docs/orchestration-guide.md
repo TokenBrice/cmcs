@@ -97,6 +97,7 @@ Add simple run-status filters to the dashboard.
 4. **Runnable acceptance criteria.** Every ticket should include at least one objective verification command.
 5. **No implicit dependencies.** Keep dependent tasks sequential or explicitly reference required prior files.
 6. **Use `model:` only when needed.** Omit it to inherit default `codex.model` from config.
+7. **Self-contained smoke tests.** Any smoke test commands in tickets or execution handovers must include required auth tokens or use public endpoints. Don't assume the reviewer has env vars set.
 
 ## Sequential Dispatch
 
@@ -138,6 +139,8 @@ cmcs worktree create feature-b
 ```
 
 By default, worktrees are created under `worktrees/<branch>/`.
+
+**File ownership:** When two parallel worktrees might create or modify the same file, explicitly assign ownership to one worktree. The other must import from the owned file or be sequenced after it. Document expected merge conflicts in the plan. Common culprits: shared types files, constants, documentation.
 
 **Step 2: Write tickets in each worktree queue**
 ```bash
@@ -183,18 +186,35 @@ Default URL is `http://127.0.0.1:4173` unless overridden in `.cmcs/config.yml`.
 
 ## Review Checklist
 
-After every Codex ticket completion, before accepting:
+Two-stage review before accepting any Codex output. Each stage catches different classes of issues.
 
-1. **Read every file** Codex created or modified.
-2. **Run acceptance criteria** commands independently.
-3. **Check for:**
+**Stage 1 — Spec review:**
+1. Does the output match the ticket contract? Missing fields, wrong signatures, unmet acceptance criteria.
+2. Run acceptance criteria commands independently.
+
+**Stage 2 — Quality review:**
+1. Read every file Codex created or modified.
+2. Check for:
    - Correct file locations
    - Clean code (no dead code, no unnecessary complexity)
    - Security issues (no hardcoded secrets, no command injection)
    - Import correctness (proper module paths, no broken imports)
    - Test quality (tests assert meaningful behavior)
-4. **If issues found:** update the ticket with clearer instructions and re-run.
-5. **If clean:** commit the work and proceed.
+   - SQL/data patterns (N+1 queries, INSERT OR REPLACE vs ON CONFLICT, timestamp semantics)
+
+**Then:**
+- **If issues found:** update the ticket with clearer instructions and re-run.
+- **If clean:** commit the work and proceed.
+
+## Post-Merge Checklist
+
+After merging each phase:
+
+1. Install dependencies if the package manifest changed (e.g. `npm install`, `pip install -e .`)
+2. Run full build / type-check
+3. Run tests
+4. Check for duplicate exports/constants from parallel worktree merges
+5. Delete the worktree only after confirming all commits are reachable on the target branch
 
 ## Hybrid Pattern
 

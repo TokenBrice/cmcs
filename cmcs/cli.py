@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 import signal
+import subprocess
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -18,6 +19,7 @@ from cmcs.db import Database
 from cmcs.runner import recover_orphans, run_ticket_flow
 from cmcs.worktree import cleanup_worktree as _cleanup_worktree
 from cmcs.worktree import create_worktree as _create_worktree
+from cmcs.worktree import reconcile_worktrees as _reconcile_worktrees
 
 app = typer.Typer(
     name="cmcs",
@@ -29,7 +31,23 @@ config_app = typer.Typer(help="Show effective configuration.")
 
 
 def _repo_root() -> Path:
-    return Path.cwd()
+    """Resolve the main repo root, even when CWD is inside a git worktree."""
+    cwd = Path.cwd()
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+            cwd=cwd,
+        )
+        if result.returncode == 0:
+            git_common = Path(result.stdout.strip())
+            if not git_common.is_absolute():
+                git_common = (cwd / git_common).resolve()
+            return git_common.parent
+    except FileNotFoundError:
+        pass
+    return cwd
 
 
 def _db() -> Database:
@@ -69,7 +87,11 @@ def init() -> None:
 
     db = Database(cmcs_dir / "cmcs.db")
     db.initialize()
+    cfg = load_config(root)
+    reconciled = _reconcile_worktrees(root, cfg, db)
     db.close()
+    if reconciled:
+        typer.echo(f"Re-registered {reconciled} orphaned worktree(s)")
     typer.echo(f"Initialized cmcs in {cmcs_dir}")
 
 
@@ -135,9 +157,11 @@ def run(path: str = typer.Argument(".", help="Repo/worktree path")) -> None:
     """Process tickets in the target repo/worktree."""
     _ensure_initialized()
     repo_path = Path(path).resolve()
+    root = _repo_root()
     db = _db()
     db.initialize()
-    cfg = load_config(_repo_root())
+    cfg = load_config(root)
+    _reconcile_worktrees(root, cfg, db)
     try:
         run_id = asyncio.run(run_ticket_flow(repo_path, cfg, db))
         run_record = db.get_run(run_id)

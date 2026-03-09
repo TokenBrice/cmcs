@@ -8,7 +8,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from cmcs.cli import app
+from cmcs.cli import _repo_root, app
 
 
 def _make_git_repo(tmp_path: Path) -> Path:
@@ -83,6 +83,48 @@ def test_worktree_create_and_list(tmp_path: Path) -> None:
         list_result = runner.invoke(app, ["worktree", "list"])
         assert list_result.exit_code == 0, list_result.output
         assert "feature-test" in list_result.output
+    finally:
+        os.chdir(previous)
+
+
+def test_repo_root_resolves_from_worktree(tmp_path: Path) -> None:
+    """_repo_root() returns the main repo even when CWD is inside a worktree."""
+    repo = _make_git_repo(tmp_path)
+    previous = Path.cwd()
+    os.chdir(repo)
+    try:
+        runner = CliRunner()
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["worktree", "create", "wt-test"])
+        wt_path = repo / "worktrees" / "wt-test"
+        assert wt_path.exists()
+
+        # cd into the worktree — _repo_root should still point to main repo
+        os.chdir(wt_path)
+        resolved = _repo_root()
+        assert resolved == repo.resolve()
+    finally:
+        os.chdir(previous)
+
+
+def test_init_reconciles_orphaned_worktrees(tmp_path: Path) -> None:
+    """cmcs init re-registers worktrees after a DB reset."""
+    repo = _make_git_repo(tmp_path)
+    runner = CliRunner()
+    previous = Path.cwd()
+    os.chdir(repo)
+    try:
+        runner.invoke(app, ["init"])
+        runner.invoke(app, ["worktree", "create", "orphan-test"])
+
+        # Simulate DB reset
+        db_path = repo / ".cmcs" / "cmcs.db"
+        db_path.unlink()
+
+        # Re-init should reconcile
+        result = runner.invoke(app, ["init"])
+        assert result.exit_code == 0, result.output
+        assert "Re-registered 1 orphaned worktree" in result.output
     finally:
         os.chdir(previous)
 

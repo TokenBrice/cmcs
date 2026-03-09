@@ -20,6 +20,8 @@ cmcs run worktrees/branch-c 2>&1 &
 wait
 ```
 
+**File ownership in parallel worktrees:** When two parallel worktrees might create or modify the same file, explicitly assign ownership to one worktree. The other must import from the owned file or be sequenced after it. Document expected merge conflicts in the plan.
+
 ### Ticket Format
 
 Place in `.cmcs/tickets/TICKET-001.md` (or `<worktree>/.cmcs/tickets/`):
@@ -68,7 +70,9 @@ cmcs dashboard                   # web UI
 ### Rules
 
 - **Never use Claude sub-agents for implementation.** All work goes to Codex via tickets.
-- **Never auto-merge.** Review every file Codex creates, run acceptance criteria yourself.
+- **Never auto-merge.** Two-stage review before merging:
+  1. **Spec review** — does the output match the ticket contract? Missing fields, wrong signatures, unmet acceptance criteria.
+  2. **Quality review** — SQL/data patterns, dead code, timestamp semantics, edge cases.
 - **Never run sudo.**
 
 ### Post-Execution Retrospective

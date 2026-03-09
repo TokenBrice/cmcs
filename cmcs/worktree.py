@@ -43,6 +43,42 @@ def list_worktrees(db: Database) -> list[dict[str, Any]]:
     return db.list_worktrees()
 
 
+def reconcile_worktrees(repo_root: Path, config: CmcsConfig, db: Database) -> int:
+    """Auto-register worktrees found on disk but missing from the DB.
+
+    Returns the number of newly registered worktrees.
+    """
+    wt_root = repo_root / config.worktrees.root
+    if not wt_root.exists():
+        return 0
+
+    registered = {wt["path"] for wt in db.list_worktrees() if wt["status"] == "active"}
+    count = 0
+
+    for child in sorted(wt_root.iterdir()):
+        if not child.is_dir():
+            continue
+        wt_path = str(child.resolve())
+        if wt_path in registered:
+            continue
+        # Verify it's a git worktree (has a .git file pointing to the main repo)
+        git_marker = child / ".git"
+        if not git_marker.exists():
+            continue
+        # Detect the actual branch name
+        result = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            capture_output=True,
+            text=True,
+            cwd=child,
+        )
+        branch = result.stdout.strip() if result.returncode == 0 else child.name
+        db.register_worktree(wt_path, branch)
+        count += 1
+
+    return count
+
+
 def cleanup_worktree(repo_root: Path, branch: str, db: Database) -> None:
     """Remove a worktree, delete its branch, and archive it in the database."""
     wt_path: str | None = None
