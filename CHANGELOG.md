@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-03-09
+
+### Changed
+
+- Skill: added ticket validation (`cmcs ticket validate`) and dry-run preview steps to workflow diagram and process
+- Skill: added Auto-Commit Behavior, Fallback Model, Troubleshooting, and Recommended Configuration sections to SKILL.md
+- Skill: clarified sandbox default (`danger-full-access`) with guidance on overriding for isolation
+- Skill: added Validation, Human Tickets, and Sequential Ticket Context sections to ticket-template.md
+- Skill: added auto-commit awareness and `cmcs logs` guidance to both reviewer prompt templates
+- Skill: updated example workflow with validation step and git log review step
+
 ## [0.3.0] - 2026-03-09
 
 Operational improvements from Pharos codebase audit learnings: auto-commit, fallback retry, model guidance consolidation. Test count 106 → 119.
@@ -106,6 +117,7 @@ Initial release of cmcs — Claude Master Codex Slave orchestration CLI.
 - Documentation: architecture guide, orchestration playbook, configuration reference, full ticket example
 - Project logo (SVG and PNG)
 
+[0.3.1]: https://github.com/TokenBrice/cmcs/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/TokenBrice/cmcs/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/TokenBrice/cmcs/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/TokenBrice/cmcs/compare/v0.1.0...v0.2.0
