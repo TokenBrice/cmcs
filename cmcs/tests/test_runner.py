@@ -409,3 +409,126 @@ def test_auto_commit_disabled(
         text=True,
     )
     assert "cmcs:" not in result.stdout
+
+
+from cmcs.runner import _should_fallback
+
+
+def test_should_fallback_context_length():
+    assert _should_fallback("Error: context length exceeded for model") is True
+    assert _should_fallback("context_length_exceeded") is True
+
+
+def test_should_fallback_max_output_tokens():
+    assert _should_fallback("Error: max_output_tokens limit reached") is True
+    assert _should_fallback("maximum token limit exceeded") is True
+
+
+def test_should_fallback_no_match():
+    assert _should_fallback("SyntaxError: invalid syntax") is False
+    assert _should_fallback("test failed with exit code 1") is False
+    assert _should_fallback("rate_limit exceeded") is False
+    assert _should_fallback("") is False
+
+
+def test_fallback_retry_on_context_error(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When primary model fails with context error and fallback is set, retry with fallback."""
+    import asyncio
+    import stat
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo something\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re, sys\n"
+            "from pathlib import Path\n"
+            "model_idx = sys.argv.index('-m') + 1\n"
+            "model = sys.argv[model_idx]\n"
+            "prompt = sys.argv[-1]\n"
+            "if model == 'gpt-5.3-codex':\n"
+            "    sys.stderr.write('Error: context_length_exceeded\\n')\n"
+            "    sys.exit(1)\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    db.register_worktree(str(git_repo), "test")
+    from cmcs.config import CodexConfig
+    config = CmcsConfig(codex=CodexConfig(
+        auto_commit=False,
+        fallback_model="gpt-5.1-codex-max",
+    ))
+
+    run_id = asyncio.run(run_ticket_flow(git_repo, config, db))
+    run_record = db.get_run(run_id)
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+
+    events = db.get_events(run_id)
+    failed_events = [e for e in events if e["event"] == "failed"]
+    completed_events = [e for e in events if e["event"] == "completed"]
+    assert len(failed_events) == 1
+    assert len(completed_events) == 1
+
+
+def test_no_fallback_on_non_model_error(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """General failures should NOT trigger fallback retry."""
+    import asyncio
+    import stat
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo something\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            "sys.stderr.write('SyntaxError: invalid syntax\\n')\n"
+            "sys.exit(1)\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    db.register_worktree(str(git_repo), "test")
+    from cmcs.config import CodexConfig
+    config = CmcsConfig(codex=CodexConfig(
+        auto_commit=False,
+        fallback_model="gpt-5.1-codex-max",
+    ))
+
+    run_id = asyncio.run(run_ticket_flow(git_repo, config, db))
+    run_record = db.get_run(run_id)
+    assert run_record is not None
+    assert run_record["status"] == "failed"
+
+    events = db.get_events(run_id)
+    started_events = [e for e in events if e["event"] == "started"]
+    assert len(started_events) == 1

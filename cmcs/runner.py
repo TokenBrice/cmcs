@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -107,6 +108,18 @@ def _build_codex_args(config: CmcsConfig, ticket: Ticket) -> list[str]:
             filtered.append(arg)
         args = filtered + ["-c", f"reasoning_effort={ticket.reasoning_effort}"]
     return args
+
+
+_FALLBACK_PATTERNS = [
+    re.compile(r"context[_\s]length", re.IGNORECASE),
+    re.compile(r"max_output_tokens", re.IGNORECASE),
+    re.compile(r"maximum.*token", re.IGNORECASE),
+]
+
+
+def _should_fallback(stderr_content: str) -> bool:
+    """Check if stderr indicates a model-limit failure worth retrying."""
+    return any(pattern.search(stderr_content) for pattern in _FALLBACK_PATTERNS)
 
 
 async def _run_single_ticket(
@@ -231,6 +244,28 @@ async def run_ticket_flow(repo_path: Path, config: CmcsConfig, db: Database) -> 
             return run_id
 
         success = await _run_single_ticket(next_ticket, repo_path, config, db, run_id, tickets)
+
+        if not success and config.codex.fallback_model:
+            primary_model = next_ticket.model or config.codex.model
+            if config.codex.fallback_model != primary_model:
+                log_dir = repo_path / ".cmcs" / "logs" / str(run_id)
+                ticket_stem = Path(next_ticket.filename).stem
+                stderr_path = log_dir / f"{ticket_stem}.stderr"
+                stderr_content = ""
+                if stderr_path.exists():
+                    stderr_content = stderr_path.read_text(encoding="utf-8", errors="replace")
+                if _should_fallback(stderr_content):
+                    print(
+                        f"Retrying {next_ticket.filename} with fallback model "
+                        f"{config.codex.fallback_model}"
+                    )
+                    original_model = next_ticket.model
+                    next_ticket.model = config.codex.fallback_model
+                    success = await _run_single_ticket(
+                        next_ticket, repo_path, config, db, run_id, tickets
+                    )
+                    next_ticket.model = original_model
+
         if not success:
             db.finish_run(run_id, "failed")
             return run_id
