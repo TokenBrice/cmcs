@@ -10,6 +10,8 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 
+import re as _re
+
 import typer
 import yaml
 
@@ -183,6 +185,20 @@ def config_show() -> None:
     typer.echo(rendered.rstrip())
 
 
+_FILE_PATH_PATTERN = _re.compile(
+    r"`[a-zA-Z0-9_./-]+\.[a-zA-Z]{1,5}`"
+    r"|(?:src|lib|tests|app|components|pages|worker)/[a-zA-Z0-9_./-]+"
+)
+
+_SPARK_FILE_THRESHOLD = 8
+
+
+def _count_file_references(body: str) -> int:
+    """Count approximate file path references in ticket body."""
+    matches = _FILE_PATH_PATTERN.findall(body)
+    return len(set(matches))
+
+
 @ticket_app.command("validate")
 def ticket_validate(
     path: str = typer.Argument(".", help="Repo/worktree path"),
@@ -197,6 +213,7 @@ def ticket_validate(
     import warnings
 
     errors = 0
+    model_warnings: list[str] = []
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         tickets = discover_tickets(tickets_dir)
@@ -212,6 +229,16 @@ def ticket_validate(
         if ticket.model and not ticket.model.strip():
             issues.append("empty model string")
 
+        # Model/scope mismatch warnings
+        if ticket.model and "spark" in ticket.model:
+            file_count = _count_file_references(ticket.body)
+            if file_count > _SPARK_FILE_THRESHOLD:
+                model_warnings.append(
+                    f"  WARNING: {ticket.filename} assigns {ticket.model} but "
+                    f"references ~{file_count} files. spark may hit "
+                    f"max_output_tokens. Consider gpt-5.3-codex or gpt-5.1-codex-max."
+                )
+
         if issues:
             errors += 1
             typer.echo(f"  {ticket.filename}: {', '.join(issues)}", err=True)
@@ -220,6 +247,10 @@ def ticket_validate(
 
     for warning_message in caught:
         typer.echo(f"  WARNING: {warning_message.message}", err=True)
+        errors += 1
+
+    for mw in model_warnings:
+        typer.echo(mw, err=True)
         errors += 1
 
     if errors:

@@ -510,3 +510,37 @@ def test_status_active_filter(
     assert result.exit_code == 0, result.output
     assert str(running_run) in result.output
     assert "completed" not in result.output
+
+
+def test_ticket_validate_warns_spark_many_files(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ticket validate should warn when spark is assigned to tickets referencing many files."""
+    monkeypatch.chdir(git_repo)
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+
+    file_refs = "\n".join(f"- `src/components/file{i}.tsx`" for i in range(12))
+    (tickets_dir / "TICKET-001.md").write_text(
+        f"---\ntitle: Rename all components\nagent: codex\nmodel: gpt-5.3-codex-spark\ndone: false\n---\n\n## Task\n{file_refs}\n"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["ticket", "validate", str(git_repo)])
+    assert "WARNING" in result.output or "spark" in result.output.lower()
+
+
+def test_ticket_validate_no_warning_spark_few_files(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ticket validate should NOT warn when spark is used with few files."""
+    monkeypatch.chdir(git_repo)
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: Fix config\nagent: codex\nmodel: gpt-5.3-codex-spark\ndone: false\n---\n\n## Task\n- `src/config.py` line 5\n- `tests/test_config.py`\n"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["ticket", "validate", str(git_repo)])
+    assert result.exit_code == 0
+    assert "WARNING" not in result.output
+    assert "valid" in result.output.lower()
