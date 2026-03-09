@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
-from cmcs.cli import _repo_root, app
+from cmcs.cli import _repo_root, _tail_text, app
 
 
 def _make_git_repo(tmp_path: Path) -> Path:
@@ -175,6 +176,77 @@ def test_logs_resolves_worktree_path(
     result = runner.invoke(app, ["logs", str(wt_path)])
     assert result.exit_code == 0, result.output
     assert "hello from worktree" in result.output
+
+
+def test_logs_calls_recover_orphans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """The logs command should call recover_orphans before displaying."""
+    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    from unittest.mock import patch
+    from typer.testing import CliRunner
+    from cmcs.cli import app
+
+    runner = CliRunner()
+    init_result = runner.invoke(app, ["init"])
+    assert init_result.exit_code == 0, init_result.output
+    with patch("cmcs.cli.recover_orphans") as mock_recover:
+        result = runner.invoke(app, ["logs", str(repo)])
+    mock_recover.assert_called_once()
+    assert result.exit_code in (0, 1)
+
+
+def test_stop_verifies_termination(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stop command should verify the process died after SIGTERM."""
+    from unittest.mock import call, patch
+
+    from cmcs.db import Database
+
+    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+
+    db = Database(repo / ".cmcs" / "cmcs.db")
+    db.initialize()
+    db.register_worktree(str(repo), "master")
+    run_id = db.create_run(str(repo), worker_pid=99999)
+    db.close()
+
+    runner = CliRunner()
+    with patch("cmcs.cli.recover_orphans") as mock_recover:
+        with patch("cmcs.cli.os.kill") as mock_kill:
+            with patch("cmcs.cli.time.sleep") as mock_sleep:
+                result = runner.invoke(app, ["stop", str(repo)])
+
+    assert result.exit_code == 0, result.output
+    assert "Stopped run" in result.output
+    mock_recover.assert_called_once()
+    assert mock_sleep.call_count == 10
+    assert mock_kill.call_count == 12
+    assert mock_kill.call_args_list[0] == call(99999, signal.SIGTERM)
+    assert mock_kill.call_args_list[-1] == call(99999, signal.SIGKILL)
+    for kill_call in mock_kill.call_args_list[1:11]:
+        assert kill_call == call(99999, 0)
+
+    db = Database(repo / ".cmcs" / "cmcs.db")
+    db.initialize()
+    run_row = db.get_run(run_id)
+    db.close()
+    assert run_row is not None
+    assert run_row["status"] == "stopped"
+
+
+def test_tail_text_utf8_boundary(tmp_path: Path) -> None:
+    """_tail_text should handle multi-byte UTF-8 at the seek boundary."""
+    content = "\U0001f600" + "a" * 4093
+    test_file = tmp_path / "test.log"
+    test_file.write_text(content, encoding="utf-8")
+
+    result = _tail_text(test_file, size=4096)
+
+    assert "\ufffd" not in result
+    assert "a" * 100 in result
 
 
 def test_status_no_runs(tmp_path: Path) -> None:

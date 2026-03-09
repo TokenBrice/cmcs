@@ -79,7 +79,9 @@ def reconcile_worktrees(repo_root: Path, config: CmcsConfig, db: Database) -> in
     return count
 
 
-def cleanup_worktree(repo_root: Path, branch: str, db: Database) -> None:
+def cleanup_worktree(
+    repo_root: Path, branch: str, db: Database, force: bool = False
+) -> None:
     """Remove a worktree, delete its branch, and archive it in the database."""
     wt_path: str | None = None
     for worktree in db.list_worktrees():
@@ -90,6 +92,7 @@ def cleanup_worktree(repo_root: Path, branch: str, db: Database) -> None:
     if wt_path is None:
         raise ValueError(f"No worktree found for branch '{branch}'")
 
+    # 1. Remove worktree first (can't delete a branch in use by a worktree)
     subprocess.run(
         ["git", "worktree", "remove", wt_path, "--force"],
         cwd=repo_root,
@@ -97,10 +100,20 @@ def cleanup_worktree(repo_root: Path, branch: str, db: Database) -> None:
         check=True,
     )
 
-    subprocess.run(
-        ["git", "branch", "-D", branch],
+    # 2. Then delete the branch (safe by default, force if requested)
+    delete_flag = "-D" if force else "-d"
+    result = subprocess.run(
+        ["git", "branch", delete_flag, branch],
         cwd=repo_root,
         capture_output=True,
+        text=True,
     )
+
+    if result.returncode != 0 and not force:
+        db.archive_worktree(wt_path)
+        raise RuntimeError(
+            f"Branch '{branch}' has unmerged changes. Use --force to delete anyway. "
+            f"Git says: {result.stderr.strip()}"
+        )
 
     db.archive_worktree(wt_path)
