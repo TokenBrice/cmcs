@@ -23,16 +23,7 @@ wait
 Place in `.cmcs/tickets/TICKET-001.md` (or `<worktree>/.cmcs/tickets/`):
 cmcs agents perform best on narrowly focused tasks. Tickets should be decomposed in the smallest logical chunk possible and using the appropriate `reasoning_effort` and `model` for the task.
 
-**Model selection:**
-
-| Model | Use When |
-|-------|----------|
-| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
-| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
-| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
-| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
-
-See `agents/process/cmcs-large-implementation-preparation.md` for the full model guide.
+**Model selection:** See the [Model Selection Guide](model-selection.md) for the full catalog, selection heuristics, and known failure modes.
 
 ```markdown
 ---

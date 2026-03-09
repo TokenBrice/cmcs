@@ -266,6 +266,7 @@ One sentence describing the outcome.
 - **Always include build + tsc + test** in acceptance criteria, even if the ticket seems small.
 - **Reference data artifacts inline.** If a ticket needs a mapping table, tell Codex exactly where to find it: "Use the mapping at `DESIGN-MAPPING-TABLE.ts` in the worktree root" — and make sure the file is actually copied there (Codex can't access paths outside its worktree).
 - **Set `reasoning_effort` appropriately.** Mechanical renames → `low`. Multi-file refactors → `medium`. Complex logic changes → `high`. Architectural decisions → `xhigh`.
+- **See the [Model Selection Guide](model-selection.md)** for the full model catalog, selection heuristics, and known failure modes.
 
 ### Special ticket types
 

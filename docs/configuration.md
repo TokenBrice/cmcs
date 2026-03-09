@@ -64,3 +64,7 @@ codex:
 **Model:** ticket `model:` field, then `codex.model` in config.
 
 **Reasoning effort:** ticket `reasoning_effort:` field, then `codex.args` in config (default: `xhigh`).
+
+## Model Selection
+
+See the [Model Selection Guide](model-selection.md) for model catalog, selection heuristics, and reasoning effort levels.

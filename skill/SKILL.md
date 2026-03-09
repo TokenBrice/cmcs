@@ -94,16 +94,7 @@ See `./ticket-template.md` for the full template.
 
 **Critical:** Tickets must be completely self-contained. Codex agents **should not** access files outside their worktree. The default sandbox mode allows full access — configure restrictive sandbox settings for isolation.
 
-**Model selection:**
-
-| Model | Use When |
-|-------|----------|
-| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
-| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
-| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
-| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
-
-When unsure, use `gpt-5.4` — over-provisioning wastes tokens but under-provisioning produces bad output.
+**Model selection:** See the [Model Selection Guide](../docs/model-selection.md) for the full catalog and selection heuristics.
 
 ## Prompt Templates
 

@@ -60,12 +60,7 @@ cmcs dashboard                   # web UI
 
 ### Model Selection
 
-| Model | Use When |
-|-------|----------|
-| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
-| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
-| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
-| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
+See the [Model Selection Guide](docs/model-selection.md) for the full catalog and selection heuristics.
 
 ### Rules
 

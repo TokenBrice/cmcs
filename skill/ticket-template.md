@@ -53,25 +53,9 @@ other changes. Include any architectural context the agent needs.]
 - [Specific behavioral checks relevant to this ticket]
 ```
 
-## Model Selection Guide
+## Model & Reasoning Effort Guide
 
-| Model | Use When |
-|-------|----------|
-| `gpt-5.4` | Ambiguous/architectural tickets needing reasoning + coding. Default when unsure. |
-| `gpt-5.3-codex` | Well-scoped coding with clear specs. Best cost/performance for standard work. |
-| `gpt-5.3-codex-spark` | Mechanical/rote: renames, string replacements, config fixes, boilerplate. |
-| `gpt-5.1-codex-max` | Marathon tickets: 10+ files, sustained coherence, huge refactors. |
-
-When unsure, use `gpt-5.4`.
-
-## Reasoning Effort Guide
-
-| Level | Use When |
-|-------|----------|
-| `low` | Mechanical renames, path fixes, string replacements |
-| `medium` | Multi-file refactors with clear patterns |
-| `high` | Logic changes, new features with defined specs |
-| `xhigh` | Architectural decisions, complex edge cases, safety-critical changes |
+See the [Model Selection Guide](../docs/model-selection.md) for model catalog, selection heuristics, reasoning effort levels, and known failure modes.
 
 ## Ticket Writing Principles
 
