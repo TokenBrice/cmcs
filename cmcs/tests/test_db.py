@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -95,6 +96,79 @@ def test_database_busy_timeout_set(tmp_path: Path) -> None:
     row = db._conn.execute("PRAGMA busy_timeout").fetchone()
 
     assert row[0] == 5000
+    db.close()
+
+
+def test_parallel_run_creation(tmp_path: Path) -> None:
+    """Multiple threads creating runs simultaneously should not crash."""
+    db_path = tmp_path / "test.db"
+    db = Database(db_path)
+    db.initialize()
+    db.register_worktree("/tmp/wt1", "branch1")
+    db.register_worktree("/tmp/wt2", "branch2")
+    db.close()
+
+    errors: list[Exception] = []
+    run_ids: list[int] = []
+
+    def create_runs(worktree: str, count: int) -> None:
+        try:
+            thread_db = Database(db_path)
+            thread_db.initialize()
+            for _ in range(count):
+                run_id = thread_db.create_run(worktree, worker_pid=1)
+                run_ids.append(run_id)
+            thread_db.close()
+        except Exception as exc:
+            errors.append(exc)
+
+    t1 = threading.Thread(target=create_runs, args=("/tmp/wt1", 10))
+    t2 = threading.Thread(target=create_runs, args=("/tmp/wt2", 10))
+    t1.start()
+    t2.start()
+    t1.join()
+    t2.join()
+
+    assert len(errors) == 0, f"Errors during parallel access: {errors}"
+    assert len(run_ids) == 20
+
+
+def test_parallel_finish_run(tmp_path: Path) -> None:
+    """Multiple threads finishing different runs should not crash."""
+    db_path = tmp_path / "test.db"
+    db = Database(db_path)
+    db.initialize()
+    db.register_worktree("/tmp/wt", "main")
+    run_ids = [db.create_run("/tmp/wt", worker_pid=i) for i in range(10)]
+    db.close()
+
+    errors: list[Exception] = []
+
+    def finish_run(run_id: int, status: str) -> None:
+        try:
+            thread_db = Database(db_path)
+            thread_db.initialize()
+            thread_db.finish_run(run_id, status)
+            thread_db.close()
+        except Exception as exc:
+            errors.append(exc)
+
+    threads = [
+        threading.Thread(target=finish_run, args=(run_id, "completed"))
+        for run_id in run_ids
+    ]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(errors) == 0, f"Errors during parallel finish: {errors}"
+
+    db = Database(db_path)
+    db.initialize()
+    for run_id in run_ids:
+        run = db.get_run(run_id)
+        assert run["status"] == "completed"
     db.close()
 
 
