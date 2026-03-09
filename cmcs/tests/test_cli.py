@@ -4,40 +4,13 @@ from __future__ import annotations
 
 import os
 import signal
-import subprocess
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
 from cmcs.cli import _repo_root, _tail_text, app
-
-
-def _make_git_repo(tmp_path: Path) -> Path:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    subprocess.run(["git", "init"], cwd=repo, capture_output=True, check=True)
-    subprocess.run(["git", "checkout", "-B", "master"], cwd=repo, capture_output=True, check=True)
-
-    (repo / "README.md").write_text("init\n", encoding="utf-8")
-    subprocess.run(["git", "add", "README.md"], cwd=repo, capture_output=True, check=True)
-
-    env = {
-        **os.environ,
-        "GIT_AUTHOR_NAME": "test",
-        "GIT_AUTHOR_EMAIL": "test@example.com",
-        "GIT_COMMITTER_NAME": "test",
-        "GIT_COMMITTER_EMAIL": "test@example.com",
-    }
-    subprocess.run(
-        ["git", "commit", "-m", "init"],
-        cwd=repo,
-        env=env,
-        capture_output=True,
-        check=True,
-    )
-    return repo
+from cmcs.db import Database
 
 
 def test_init_creates_structure(tmp_path: Path) -> None:
@@ -69,97 +42,207 @@ def test_config_show(tmp_path: Path) -> None:
         os.chdir(previous)
 
 
-def test_worktree_create_and_list(tmp_path: Path) -> None:
+def test_worktree_create_and_list(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     runner = CliRunner()
-    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(git_repo)
 
-    previous = Path.cwd()
-    os.chdir(repo)
-    try:
-        init_result = runner.invoke(app, ["init"])
-        assert init_result.exit_code == 0, init_result.output
+    init_result = runner.invoke(app, ["init"])
+    assert init_result.exit_code == 0, init_result.output
 
-        create_result = runner.invoke(app, ["worktree", "create", "feature-test"])
-        assert create_result.exit_code == 0, create_result.output
+    create_result = runner.invoke(app, ["worktree", "create", "feature-test"])
+    assert create_result.exit_code == 0, create_result.output
 
-        list_result = runner.invoke(app, ["worktree", "list"])
-        assert list_result.exit_code == 0, list_result.output
-        assert "feature-test" in list_result.output
-    finally:
-        os.chdir(previous)
+    list_result = runner.invoke(app, ["worktree", "list"])
+    assert list_result.exit_code == 0, list_result.output
+    assert "feature-test" in list_result.output
 
 
-def test_repo_root_resolves_from_worktree(tmp_path: Path) -> None:
+def test_repo_root_resolves_from_worktree(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """_repo_root() returns the main repo even when CWD is inside a worktree."""
-    repo = _make_git_repo(tmp_path)
-    previous = Path.cwd()
-    os.chdir(repo)
-    try:
-        runner = CliRunner()
-        runner.invoke(app, ["init"])
-        runner.invoke(app, ["worktree", "create", "wt-test"])
-        wt_path = repo / "worktrees" / "wt-test"
-        assert wt_path.exists()
-
-        # cd into the worktree — _repo_root should still point to main repo
-        os.chdir(wt_path)
-        resolved = _repo_root()
-        assert resolved == repo.resolve()
-    finally:
-        os.chdir(previous)
-
-
-def test_init_reconciles_orphaned_worktrees(tmp_path: Path) -> None:
-    """cmcs init re-registers worktrees after a DB reset."""
-    repo = _make_git_repo(tmp_path)
+    monkeypatch.chdir(git_repo)
     runner = CliRunner()
-    previous = Path.cwd()
-    os.chdir(repo)
-    try:
-        runner.invoke(app, ["init"])
-        runner.invoke(app, ["worktree", "create", "orphan-test"])
+    runner.invoke(app, ["init"])
+    runner.invoke(app, ["worktree", "create", "wt-test"])
+    wt_path = git_repo / "worktrees" / "wt-test"
+    assert wt_path.exists()
 
-        # Simulate DB reset
-        db_path = repo / ".cmcs" / "cmcs.db"
-        db_path.unlink()
+    # cd into the worktree — _repo_root should still point to main repo
+    monkeypatch.chdir(wt_path)
+    resolved = _repo_root()
+    assert resolved == git_repo.resolve()
 
-        # Re-init should reconcile
-        result = runner.invoke(app, ["init"])
-        assert result.exit_code == 0, result.output
-        assert "Re-registered 1 orphaned worktree" in result.output
-    finally:
-        os.chdir(previous)
+
+def test_init_reconciles_orphaned_worktrees(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """cmcs init re-registers worktrees after a DB reset."""
+    runner = CliRunner()
+    monkeypatch.chdir(git_repo)
+    runner.invoke(app, ["init"])
+    runner.invoke(app, ["worktree", "create", "orphan-test"])
+
+    # Simulate DB reset
+    db_path = git_repo / ".cmcs" / "cmcs.db"
+    db_path.unlink()
+
+    # Re-init should reconcile
+    result = runner.invoke(app, ["init"])
+    assert result.exit_code == 0, result.output
+    assert "Re-registered 1 orphaned worktree" in result.output
 
 
 def test_run_auto_registers_worktree(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """run command should auto-register unregistered paths, preventing FK violations."""
-    repo = _make_git_repo(tmp_path)
-    monkeypatch.chdir(repo)
+    monkeypatch.chdir(git_repo)
 
-    (repo / ".cmcs" / "tickets").mkdir(parents=True, exist_ok=True)
+    (git_repo / ".cmcs" / "tickets").mkdir(parents=True, exist_ok=True)
 
     runner = CliRunner()
-    result = runner.invoke(app, ["run", str(repo)])
+    result = runner.invoke(app, ["run", str(git_repo)])
     assert result.exit_code == 0, result.output
     assert "finished with status: completed" in result.output
 
 
+def test_run_completes_with_no_tickets(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """run command should complete cleanly when no tickets exist."""
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(git_repo)])
+    assert result.exit_code == 0, result.output
+    assert "finished with status: completed" in result.output
+
+
+def test_wait_exits_when_no_runs(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wait command should exit with error when no runs exist."""
+    monkeypatch.chdir(git_repo)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["wait", str(git_repo)])
+    assert result.exit_code == 1, result.output
+    assert "No runs" in result.output
+
+
+def test_wait_exits_when_run_completed(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wait command should return immediately for completed runs."""
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    run_id = db.create_run(str(git_repo), worker_pid=1)
+    db.finish_run(run_id, "completed")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["wait", str(git_repo)])
+    assert result.exit_code == 0, result.output
+    assert "completed" in result.output
+
+
+def test_stop_exits_when_no_running(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stop command should exit with error when no running flows exist."""
+    monkeypatch.chdir(git_repo)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["stop", str(git_repo)])
+    assert result.exit_code == 1, result.output
+    assert "No running flow" in result.output
+
+
+def test_stop_marks_run_stopped(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """stop command should mark the run as stopped."""
+    from unittest.mock import patch
+
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    run_id = db.create_run(str(git_repo), worker_pid=99999)
+
+    runner = CliRunner()
+    with patch("cmcs.cli.recover_orphans", return_value=[]):
+        result = runner.invoke(app, ["stop", str(git_repo)])
+
+    assert result.exit_code == 0, result.output
+    assert "Stopped" in result.output
+    run_record = db.get_run(run_id)
+    assert run_record is not None
+    assert run_record["status"] == "stopped"
+
+
+def test_logs_no_runs(git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """logs command should exit with error when no runs exist."""
+    monkeypatch.chdir(git_repo)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["logs", str(git_repo)])
+    assert result.exit_code == 1, result.output
+    assert "No runs" in result.output
+
+
+def test_logs_shows_content(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """logs command should display log file contents."""
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    run_id = db.create_run(str(git_repo), worker_pid=1)
+    db.finish_run(run_id, "completed")
+
+    log_dir = git_repo / ".cmcs" / "logs" / str(run_id)
+    log_dir.mkdir(parents=True, exist_ok=True)
+    (log_dir / "TICKET-001.stdout").write_text("test output here", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["logs", str(git_repo)])
+    assert result.exit_code == 0, result.output
+    assert "test output here" in result.output
+
+
+def test_dashboard_starts_uvicorn(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """dashboard command should launch uvicorn with configured host and port."""
+    from unittest.mock import patch
+
+    monkeypatch.chdir(git_repo)
+
+    runner = CliRunner()
+    with patch("uvicorn.run") as mock_run:
+        result = runner.invoke(app, ["dashboard"])
+
+    assert result.exit_code == 0, result.output
+    mock_run.assert_called_once()
+    _, kwargs = mock_run.call_args
+    assert kwargs["host"] == "127.0.0.1"
+    assert kwargs["port"] == 4173
+
+
 def test_logs_resolves_worktree_path(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """logs command should look in the worktree's .cmcs/logs/, not main repo."""
-    repo = _make_git_repo(tmp_path)
-    monkeypatch.chdir(repo)
+    monkeypatch.chdir(git_repo)
 
     from cmcs.db import Database
 
-    db = Database(repo / ".cmcs" / "cmcs.db")
+    db = Database(git_repo / ".cmcs" / "cmcs.db")
     db.initialize()
 
     # Simulate a worktree run: register a worktree and create a run.
-    wt_path = repo / "worktrees" / "feature-a"
+    wt_path = git_repo / "worktrees" / "feature-a"
     wt_path.mkdir(parents=True)
     db.register_worktree(str(wt_path), "feature-a")
     run_id = db.create_run(str(wt_path), worker_pid=1)
@@ -178,10 +261,11 @@ def test_logs_resolves_worktree_path(
     assert "hello from worktree" in result.output
 
 
-def test_logs_calls_recover_orphans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_logs_calls_recover_orphans(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The logs command should call recover_orphans before displaying."""
-    repo = _make_git_repo(tmp_path)
-    monkeypatch.chdir(repo)
+    monkeypatch.chdir(git_repo)
 
     from unittest.mock import patch
     from typer.testing import CliRunner
@@ -191,33 +275,32 @@ def test_logs_calls_recover_orphans(tmp_path: Path, monkeypatch: pytest.MonkeyPa
     init_result = runner.invoke(app, ["init"])
     assert init_result.exit_code == 0, init_result.output
     with patch("cmcs.cli.recover_orphans") as mock_recover:
-        result = runner.invoke(app, ["logs", str(repo)])
+        result = runner.invoke(app, ["logs", str(git_repo)])
     mock_recover.assert_called_once()
     assert result.exit_code in (0, 1)
 
 
 def test_stop_verifies_termination(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """stop command should verify the process died after SIGTERM."""
     from unittest.mock import call, patch
 
     from cmcs.db import Database
 
-    repo = _make_git_repo(tmp_path)
-    monkeypatch.chdir(repo)
+    monkeypatch.chdir(git_repo)
 
-    db = Database(repo / ".cmcs" / "cmcs.db")
+    db = Database(git_repo / ".cmcs" / "cmcs.db")
     db.initialize()
-    db.register_worktree(str(repo), "master")
-    run_id = db.create_run(str(repo), worker_pid=99999)
+    db.register_worktree(str(git_repo), "master")
+    run_id = db.create_run(str(git_repo), worker_pid=99999)
     db.close()
 
     runner = CliRunner()
     with patch("cmcs.cli.recover_orphans") as mock_recover:
         with patch("cmcs.cli.os.kill") as mock_kill:
             with patch("cmcs.cli.time.sleep") as mock_sleep:
-                result = runner.invoke(app, ["stop", str(repo)])
+                result = runner.invoke(app, ["stop", str(git_repo)])
 
     assert result.exit_code == 0, result.output
     assert "Stopped run" in result.output
@@ -229,7 +312,7 @@ def test_stop_verifies_termination(
     for kill_call in mock_kill.call_args_list[1:11]:
         assert kill_call == call(99999, 0)
 
-    db = Database(repo / ".cmcs" / "cmcs.db")
+    db = Database(git_repo / ".cmcs" / "cmcs.db")
     db.initialize()
     run_row = db.get_run(run_id)
     db.close()
