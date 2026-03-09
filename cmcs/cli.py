@@ -185,14 +185,37 @@ def worktree_cleanup(
 
 
 @app.command()
-def run(path: str = typer.Argument(".", help="Repo/worktree path")) -> None:
+def run(
+    path: str = typer.Argument(".", help="Repo/worktree path"),
+    dry_run: bool = typer.Option(
+        False,
+        "--dry-run",
+        help="Show tickets that would be processed without running them",
+    ),
+) -> None:
     """Process tickets in the target repo/worktree."""
     _ensure_initialized()
     repo_path = Path(path).resolve()
     root = _repo_root()
+    cfg = load_config(root)
+
+    if dry_run:
+        from cmcs.tickets import discover_tickets
+
+        tickets_dir = repo_path / cfg.tickets.dir
+        tickets = discover_tickets(tickets_dir)
+        undone = [ticket for ticket in tickets if not ticket.done]
+        if not undone:
+            typer.echo("No pending tickets to process.")
+        else:
+            typer.echo(f"Would process {len(undone)} ticket(s):")
+            for ticket in undone:
+                model = ticket.model or cfg.codex.model
+                typer.echo(f"  {ticket.filename}: {ticket.title} (model={model})")
+        return
+
     db = _db()
     db.initialize()
-    cfg = load_config(root)
     _reconcile_worktrees(root, cfg, db)
     existing = {wt["path"] for wt in db.list_worktrees()}
     if str(repo_path) not in existing:
@@ -265,14 +288,25 @@ def status(
 
 
 @app.command()
-def wait(path: str = typer.Argument(..., help="Worktree path")) -> None:
+def wait(
+    path: str = typer.Argument(..., help="Worktree path"),
+    timeout: Optional[int] = typer.Option(
+        None, "--timeout", "-t", help="Max seconds to wait"
+    ),
+) -> None:
     """Poll every second until the latest run is no longer running."""
     _ensure_initialized()
     target = str(Path(path).resolve())
     db = _db()
     db.initialize()
+    start_time = time.monotonic()
     try:
         while True:
+            if timeout is not None and (time.monotonic() - start_time) > timeout:
+                typer.echo(
+                    f"Timed out after {timeout}s waiting for run to complete.", err=True
+                )
+                raise typer.Exit(code=2)
             recover_orphans(db)
             run_row = db.get_latest_run(target)
             if run_row is None:
@@ -342,8 +376,16 @@ def stop(path: str = typer.Argument(..., help="Worktree path")) -> None:
 
 
 @app.command()
-def logs(path: str = typer.Argument(..., help="Worktree path")) -> None:
-    """Show the last 4KB of each log file for the latest run."""
+def logs(
+    path: str = typer.Argument(..., help="Worktree path"),
+    lines: int = typer.Option(
+        4096, "--lines", "-n", help="Bytes to tail from each log file"
+    ),
+    follow: bool = typer.Option(
+        False, "--follow", "-f", help="Follow log output (poll every 2s)"
+    ),
+) -> None:
+    """Show log file output for the latest run."""
     _ensure_initialized()
     target = str(Path(path).resolve())
     db = _db()
@@ -379,8 +421,22 @@ def logs(path: str = typer.Argument(..., help="Worktree path")) -> None:
 
     for log_file in log_files:
         typer.echo(f"=== {log_file.name} ===")
-        content = _tail_text(log_file)
+        content = _tail_text(log_file, size=lines)
         typer.echo(content.rstrip() or "(empty)")
+
+    if follow:
+        last_sizes = {lf: lf.stat().st_size for lf in log_files}
+        while True:
+            time.sleep(2)
+            for log_file in log_files:
+                current_size = log_file.stat().st_size if log_file.exists() else 0
+                prev_size = last_sizes.get(log_file, 0)
+                if current_size > prev_size:
+                    with log_file.open("rb") as f:
+                        f.seek(prev_size)
+                        new_data = f.read()
+                    typer.echo(new_data.decode("utf-8", errors="replace"), nl=False)
+                    last_sizes[log_file] = current_size
 
 
 @app.command()

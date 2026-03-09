@@ -125,6 +125,25 @@ def test_run_auto_registers_worktree(
     assert "finished with status: completed" in result.output
 
 
+def test_run_dry_run(git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """--dry-run should list pending tickets without executing."""
+    monkeypatch.chdir(git_repo)
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: Test task\ndone: false\n---\nDo something\n", encoding="utf-8"
+    )
+    (tickets_dir / "TICKET-002.md").write_text(
+        "---\ntitle: Done task\ndone: true\n---\nAlready done\n", encoding="utf-8"
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["run", str(git_repo), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "Would process 1 ticket" in result.output
+    assert "TICKET-001" in result.output
+    assert "TICKET-002" not in result.output
+
+
 def test_run_completes_with_no_tickets(
     git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -175,6 +194,24 @@ def test_wait_exits_when_run_completed(
     result = runner.invoke(app, ["wait", str(git_repo)])
     assert result.exit_code == 0, result.output
     assert "completed" in result.output
+
+
+def test_wait_timeout(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """wait --timeout should exit with code 2 after timeout."""
+    from unittest.mock import patch
+
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    db.create_run(str(git_repo), worker_pid=99999)
+
+    runner = CliRunner()
+    with patch("cmcs.cli.recover_orphans", return_value=[]):
+        result = runner.invoke(app, ["wait", str(git_repo), "--timeout", "1"])
+
+    assert result.exit_code == 2, result.output
+    assert "Timed out" in result.output
 
 
 def test_stop_exits_when_no_running(
@@ -237,6 +274,25 @@ def test_logs_shows_content(
     result = runner.invoke(app, ["logs", str(git_repo)])
     assert result.exit_code == 0, result.output
     assert "test output here" in result.output
+
+
+def test_logs_lines_option(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """--lines option should control how much of the log to show."""
+    monkeypatch.chdir(git_repo)
+    db.register_worktree(str(git_repo), "master")
+    run_id = db.create_run(str(git_repo), worker_pid=1)
+    db.finish_run(run_id, "completed")
+
+    log_dir = git_repo / ".cmcs" / "logs" / str(run_id)
+    log_dir.mkdir(parents=True)
+    (log_dir / "TICKET-001.stdout").write_text("a" * 10000)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["logs", str(git_repo), "--lines", "100"])
+    assert result.exit_code == 0
+    assert len(result.output) < 500
 
 
 def test_dashboard_starts_uvicorn(
