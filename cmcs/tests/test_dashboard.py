@@ -74,9 +74,39 @@ def test_run_events(tmp_path: Path) -> None:
     assert payload[1]["duration_s"] == 45.2
 
 
+def test_run_events_404_for_nonexistent(tmp_path: Path) -> None:
+    """Events endpoint should return 404 for non-existent run."""
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/runs/999/events")
+    assert response.status_code == 404
+
+
 def test_index_page(tmp_path: Path) -> None:
     _seed_dashboard_db(tmp_path)
     with TestClient(create_app(tmp_path)) as test_client:
         response = test_client.get("/")
     assert response.status_code == 200
     assert "cmcs" in response.text.lower()
+
+
+def test_xss_safe_worktree_name(tmp_path: Path) -> None:
+    """Worktree names with HTML should not be rendered as HTML."""
+    cmcs_dir = tmp_path / ".cmcs"
+    cmcs_dir.mkdir()
+
+    db = Database(cmcs_dir / "cmcs.db")
+    db.initialize()
+    db.register_worktree("/tmp/<script>alert(1)</script>", "xss-branch")
+    db.close()
+
+    app = create_app(tmp_path)
+    response = TestClient(app).get("/")
+
+    assert response.status_code == 200
+    assert "innerHTML" not in response.text
+
+    worktrees = TestClient(app).get("/api/worktrees")
+    assert worktrees.status_code == 200
+    data = worktrees.json()
+    assert any("<script>" in str(wt.get("path", "")) for wt in data)

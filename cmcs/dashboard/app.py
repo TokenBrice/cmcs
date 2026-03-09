@@ -7,10 +7,11 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 
 from cmcs.db import Database
+from cmcs.runner import recover_orphans
 
 
 def _ticket_counts(events: list[dict[str, Any]]) -> tuple[int, int]:
@@ -62,6 +63,7 @@ def create_app(repo_root: Path) -> FastAPI:
     @app.get("/api/runs")
     async def runs() -> list[dict[str, Any]]:
         dashboard_db = _database()
+        recover_orphans(dashboard_db)
         enriched: list[dict[str, Any]] = []
         for run in dashboard_db.all_runs():
             events = dashboard_db.get_events(int(run["id"]))
@@ -74,7 +76,11 @@ def create_app(repo_root: Path) -> FastAPI:
 
     @app.get("/api/runs/{run_id}/events")
     async def run_events(run_id: int) -> list[dict[str, Any]]:
-        return _database().get_events(run_id)
+        dashboard_db = _database()
+        run = dashboard_db.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Run {run_id} not found")
+        return dashboard_db.get_events(run_id)
 
     @app.get("/", response_class=HTMLResponse)
     async def index() -> HTMLResponse:

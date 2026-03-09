@@ -124,23 +124,58 @@
     }
 
     function renderAgents(runs, worktreesByPath, eventsByRun) {
+      agentsEl.textContent = "";
       if (!runs.length) {
-        agentsEl.innerHTML = '<div class="empty">No runs found.</div>';
+        const empty = document.createElement("div");
+        empty.className = "empty";
+        empty.textContent = "No runs found.";
+        agentsEl.appendChild(empty);
         return;
       }
 
-      agentsEl.innerHTML = [...runs].sort((a, b) => b.id - a.id).map((run) => {
+      [...runs].sort((a, b) => b.id - a.id).forEach((run) => {
         const events = eventsByRun[run.id] || [];
         const branch = worktreesByPath[run.worktree]?.branch || "n/a";
-        return `<article class="card">
-          <div class="card-top"><div class="name">${worktreeName(run.worktree)}</div><div class="status"><span class="dot ${statusClass(run.status)}"></span>${run.status}</div></div>
-          <div class="kv"><div class="k">branch</div><div class="v">${branch}</div></div>
-          <div class="kv"><div class="k">ticket</div><div class="v">${currentTicket(events)}</div></div>
-          <div class="kv"><div class="k">model</div><div class="v">${currentModel(events)}</div></div>
-          <div class="kv"><div class="k">pid</div><div class="v">${run.worker_pid || "n/a"}</div></div>
-          <div class="kv"><div class="k">elapsed</div><div class="v">${elapsedForRun(run)}</div></div>
-        </article>`;
-      }).join("");
+        const card = document.createElement("article");
+        card.className = "card";
+
+        function addKV(label, value) {
+          const row = document.createElement("div");
+          row.className = "kv";
+          const k = document.createElement("div");
+          k.className = "k";
+          k.textContent = label;
+          const v = document.createElement("div");
+          v.className = "v";
+          v.textContent = value;
+          row.appendChild(k);
+          row.appendChild(v);
+          card.appendChild(row);
+        }
+
+        const top = document.createElement("div");
+        top.className = "card-top";
+        const name = document.createElement("div");
+        name.className = "name";
+        name.textContent = worktreeName(run.worktree);
+        const status = document.createElement("div");
+        status.className = "status";
+        const dot = document.createElement("span");
+        dot.className = "dot " + statusClass(run.status);
+        status.appendChild(dot);
+        status.appendChild(document.createTextNode(run.status));
+        top.appendChild(name);
+        top.appendChild(status);
+        card.appendChild(top);
+
+        addKV("branch", branch);
+        addKV("ticket", currentTicket(events));
+        addKV("model", currentModel(events));
+        addKV("pid", run.worker_pid ?? "n/a");
+        addKV("elapsed", elapsedForRun(run));
+
+        agentsEl.appendChild(card);
+      });
     }
 
     function renderEvents(runs, eventsByRun) {
@@ -159,19 +194,48 @@
         return (b.id || 0) - (a.id || 0);
       });
 
+      eventsEl.textContent = "";
       if (!allEvents.length) {
-        eventsEl.innerHTML = '<tr><td colspan="6" class="empty">No events found.</td></tr>';
+        const row = document.createElement("tr");
+        const cell = document.createElement("td");
+        cell.colSpan = 6;
+        cell.className = "empty";
+        cell.textContent = "No events found.";
+        row.appendChild(cell);
+        eventsEl.appendChild(row);
         return;
       }
 
-      eventsEl.innerHTML = allEvents.map((event) => `<tr>
-        <td>${formatTime(event.timestamp)}</td>
-        <td>${worktreeName(event.worktree)}</td>
-        <td>${event.ticket || "n/a"}</td>
-        <td class="event-type">${event.event || "n/a"}</td>
-        <td>${event.model || "n/a"}</td>
-        <td>${formatDuration(event.duration_s)}</td>
-      </tr>`).join("");
+      allEvents.forEach((event) => {
+        const row = document.createElement("tr");
+
+        const ts = document.createElement("td");
+        ts.textContent = formatTime(event.timestamp);
+        row.appendChild(ts);
+
+        const wt = document.createElement("td");
+        wt.textContent = worktreeName(event.worktree);
+        row.appendChild(wt);
+
+        const ticket = document.createElement("td");
+        ticket.textContent = event.ticket || "n/a";
+        row.appendChild(ticket);
+
+        const type = document.createElement("td");
+        type.className = "event-type";
+        type.textContent = event.event || "n/a";
+        row.appendChild(type);
+
+        const model = document.createElement("td");
+        model.textContent = event.model || "n/a";
+        row.appendChild(model);
+
+        const duration = document.createElement("td");
+        duration.textContent = formatDuration(event.duration_s);
+        row.appendChild(duration);
+
+        eventsEl.appendChild(row);
+      });
     }
 
     async function refresh() {
