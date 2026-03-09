@@ -28,6 +28,7 @@ app = typer.Typer(
 )
 worktree_app = typer.Typer(help="Manage git worktrees.")
 config_app = typer.Typer(help="Show effective configuration.")
+ticket_app = typer.Typer(help="Ticket management.")
 
 
 def _repo_root() -> Path:
@@ -93,6 +94,7 @@ def _colored_status(status: str) -> str:
 
 app.add_typer(worktree_app, name="worktree")
 app.add_typer(config_app, name="config")
+app.add_typer(ticket_app, name="ticket")
 
 
 @app.command()
@@ -114,6 +116,54 @@ def init() -> None:
     typer.echo(f"Initialized cmcs in {cmcs_dir}")
 
 
+@app.command()
+def clean(
+    logs_older_than: int = typer.Option(
+        30, "--logs-days", help="Delete logs older than N days"
+    ),
+    purge_archived: bool = typer.Option(
+        False, "--purge-archived", help="Remove archived worktree records from DB"
+    ),
+) -> None:
+    """Clean up old logs and archived data."""
+    _ensure_initialized()
+    root = _repo_root()
+    removed_logs = 0
+
+    logs_dir = root / ".cmcs" / "logs"
+    if logs_dir.exists():
+        import shutil
+
+        cutoff = time.time() - (logs_older_than * 86400)
+        for log_dir in logs_dir.iterdir():
+            if log_dir.is_dir() and log_dir.stat().st_mtime < cutoff:
+                shutil.rmtree(log_dir)
+                removed_logs += 1
+
+    typer.echo(
+        f"Removed {removed_logs} old log director{'y' if removed_logs == 1 else 'ies'}."
+    )
+
+    if purge_archived:
+        db = _db()
+        db.initialize()
+        try:
+            archived = [
+                worktree for worktree in db.list_worktrees() if worktree["status"] == "archived"
+            ]
+            # Keep run/event rows for history; only remove archived worktree entries.
+            count = len(archived)
+            for worktree in archived:
+                db._conn.execute(
+                    "DELETE FROM worktrees WHERE path = ? AND status = 'archived'",
+                    (worktree["path"],),
+                )
+            db._conn.commit()
+            typer.echo(f"Purged {count} archived worktree record(s) from database.")
+        finally:
+            db.close()
+
+
 @config_app.command("show")
 def config_show() -> None:
     """Print effective configuration."""
@@ -121,6 +171,51 @@ def config_show() -> None:
     cfg = load_config(_repo_root())
     rendered = yaml.safe_dump(asdict(cfg), sort_keys=False)
     typer.echo(rendered.rstrip())
+
+
+@ticket_app.command("validate")
+def ticket_validate(
+    path: str = typer.Argument(".", help="Repo/worktree path"),
+) -> None:
+    """Validate ticket format and report issues."""
+    _ensure_initialized()
+    repo_path = Path(path).resolve()
+    cfg = load_config(_repo_root())
+    tickets_dir = repo_path / cfg.tickets.dir
+
+    from cmcs.tickets import discover_tickets
+    import warnings
+
+    errors = 0
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        tickets = discover_tickets(tickets_dir)
+
+    if not tickets:
+        typer.echo("No tickets found.")
+        return
+
+    for ticket in tickets:
+        issues = []
+        if not ticket.title:
+            issues.append("missing title")
+        if ticket.model and not ticket.model.strip():
+            issues.append("empty model string")
+
+        if issues:
+            errors += 1
+            typer.echo(f"  {ticket.filename}: {', '.join(issues)}", err=True)
+        else:
+            typer.echo(f"  {ticket.filename}: OK")
+
+    for warning_message in caught:
+        typer.echo(f"  WARNING: {warning_message.message}", err=True)
+        errors += 1
+
+    if errors:
+        typer.echo(f"\n{errors} issue(s) found.", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"\nAll {len(tickets)} ticket(s) valid.")
 
 
 @app.command()

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import signal
+import time
 from pathlib import Path
 
 import pytest
@@ -142,6 +143,55 @@ def test_run_dry_run(git_repo: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     assert "Would process 1 ticket" in result.output
     assert "TICKET-001" in result.output
     assert "TICKET-002" not in result.output
+
+
+def test_ticket_validate_ok(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ticket validate should pass for well-formed tickets."""
+    monkeypatch.chdir(git_repo)
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: Good ticket\ndone: false\n---\nTask\n"
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["ticket", "validate", str(git_repo)])
+    assert result.exit_code == 0
+    assert "valid" in result.output.lower()
+
+
+def test_ticket_validate_missing_title(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """ticket validate should flag tickets without titles."""
+    monkeypatch.chdir(git_repo)
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ndone: false\n---\nNo title\n"
+    )
+    runner = CliRunner()
+    result = runner.invoke(app, ["ticket", "validate", str(git_repo)])
+    assert result.exit_code == 1
+    assert "missing title" in result.output
+
+
+def test_clean_removes_old_logs(
+    git_repo: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """clean command should remove logs older than threshold."""
+    monkeypatch.chdir(git_repo)
+    log_dir = git_repo / ".cmcs" / "logs" / "1"
+    log_dir.mkdir(parents=True)
+    (log_dir / "test.stdout").write_text("old log", encoding="utf-8")
+
+    old_time = time.time() - (60 * 86400)
+    os.utime(log_dir, (old_time, old_time))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["clean", "--logs-days", "30"])
+    assert result.exit_code == 0, result.output
+    assert "Removed 1" in result.output
+    assert not log_dir.exists()
 
 
 def test_run_completes_with_no_tickets(
