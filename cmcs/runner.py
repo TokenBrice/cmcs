@@ -5,13 +5,14 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
 import time
 from pathlib import Path
 from typing import Any
 
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
-from cmcs.tickets import Ticket, discover_tickets, get_previous_progress
+from cmcs.tickets import Ticket, discover_tickets, get_previous_progress, parse_ticket
 
 
 def build_prompt(
@@ -177,7 +178,28 @@ async def _run_single_ticket(
         exit_code=exit_code,
         duration_s=duration,
     )
-    return exit_code == 0
+    success = exit_code == 0
+
+    if success and config.codex.auto_commit:
+        try:
+            updated_content = ticket_path.read_text(encoding="utf-8")
+            updated_ticket = parse_ticket(updated_content, ticket.filename)
+            if updated_ticket.done:
+                result = subprocess.run(
+                    ["git", "add", "-A"],
+                    cwd=repo_path,
+                    capture_output=True,
+                )
+                if result.returncode == 0:
+                    subprocess.run(
+                        ["git", "commit", "-m", f"cmcs: {ticket.filename} completed"],
+                        cwd=repo_path,
+                        capture_output=True,
+                    )
+        except Exception:
+            pass  # Auto-commit is best-effort; don't break the run
+
+    return success
 
 
 async def run_ticket_flow(repo_path: Path, config: CmcsConfig, db: Database) -> int:

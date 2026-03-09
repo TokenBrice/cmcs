@@ -304,3 +304,108 @@ async def test_run_single_ticket_timeout(tmp_path, monkeypatch) -> None:
         assert failed_events[0]["duration_s"] == pytest.approx(config.codex.timeout_s)
     finally:
         db.close()
+
+
+def test_auto_commit_after_done_ticket(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Successful ticket marked done should be auto-committed."""
+    import asyncio
+    import stat
+    import subprocess
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo nothing\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re, sys\n"
+            "from pathlib import Path\n"
+            "prompt = sys.argv[-1]\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found in prompt')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+            "# Also create a new file to verify it gets committed\n"
+            "Path(ticket_path.parent.parent.parent / 'new_file.txt').write_text('created by agent')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    db.register_worktree(str(git_repo), "test")
+    config = CmcsConfig()
+    assert config.codex.auto_commit is True
+
+    run_id = asyncio.run(run_ticket_flow(git_repo, config, db))
+    run_record = db.get_run(run_id)
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+
+    # Verify a commit was created
+    result = subprocess.run(
+        ["git", "-C", str(git_repo), "log", "--oneline", "-2"],
+        capture_output=True,
+        text=True,
+    )
+    assert "cmcs: TICKET-001.md completed" in result.stdout
+
+
+def test_auto_commit_disabled(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When auto_commit is False, no commit should be created after ticket."""
+    import asyncio
+    import stat
+    import subprocess
+    from cmcs.config import CodexConfig
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo nothing\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re, sys\n"
+            "from pathlib import Path\n"
+            "prompt = sys.argv[-1]\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found in prompt')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    db.register_worktree(str(git_repo), "test")
+    config = CmcsConfig(codex=CodexConfig(auto_commit=False))
+
+    run_id = asyncio.run(run_ticket_flow(git_repo, config, db))
+
+    # Verify NO auto-commit was made
+    result = subprocess.run(
+        ["git", "-C", str(git_repo), "log", "--oneline", "-2"],
+        capture_output=True,
+        text=True,
+    )
+    assert "cmcs:" not in result.stdout
