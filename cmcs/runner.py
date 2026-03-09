@@ -214,7 +214,6 @@ async def _run_single_ticket(
         "stderr_path": str(stderr_path),
     }
     summary_path = log_dir / f"{ticket_stem}.json"
-    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
     db.record_event(
         run_id,
@@ -272,9 +271,16 @@ async def _run_single_ticket(
                         cwd=repo_path,
                         capture_output=True,
                     )
-        except Exception:
-            pass  # Auto-commit is best-effort; don't break the run
+        except Exception as exc:
+            db.record_event(
+                run_id,
+                ticket.filename,
+                "warning",
+                model=model,
+            )
+            summary["auto_commit_error"] = str(exc)
 
+    summary_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     return success
 
 

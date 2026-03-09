@@ -490,6 +490,61 @@ def test_auto_commit_disabled(
     assert "cmcs:" not in result.stdout
 
 
+def test_auto_commit_failure_records_warning(
+    git_repo: Path, db: Database, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Auto-commit failures should emit warning events and be logged in summary JSON."""
+    import asyncio
+    import json
+    import stat
+
+    tickets_dir = git_repo / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo nothing\n",
+        encoding="utf-8",
+    )
+
+    codex_script = git_repo / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re, sys\n"
+            "from pathlib import Path\n"
+            "prompt = sys.argv[-1]\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found in prompt')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{git_repo}:{os.environ.get('PATH', '')}")
+
+    def broken_git_run(*_args, **_kwargs):
+        raise OSError("git broken")
+
+    monkeypatch.setattr("cmcs.runner.subprocess.run", broken_git_run)
+
+    db.register_worktree(str(git_repo), "test")
+    run_id = asyncio.run(run_ticket_flow(git_repo, CmcsConfig(), db))
+
+    run_record = db.get_run(run_id)
+    assert run_record is not None
+    assert run_record["status"] == "completed"
+
+    events = db.get_events(run_id)
+    assert any(event["event"] == "warning" for event in events)
+
+    summary_path = git_repo / ".cmcs" / "logs" / str(run_id) / "TICKET-001.json"
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    assert "auto_commit_error" in summary
+
+
 from cmcs.runner import _should_fallback
 
 
