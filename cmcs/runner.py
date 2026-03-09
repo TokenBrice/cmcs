@@ -144,6 +144,7 @@ async def _run_single_ticket(
             stdout=stdout_file,
             stderr=stderr_file,
         )
+        db.update_worker_pid(run_id, process.pid)
         try:
             exit_code = await asyncio.wait_for(
                 process.wait(), timeout=config.codex.timeout_s

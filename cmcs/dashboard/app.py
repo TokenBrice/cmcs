@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
@@ -9,12 +11,6 @@ from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 
 from cmcs.db import Database
-
-
-def _open_db(db_path: Path) -> Database:
-    db = Database(db_path)
-    db.initialize()
-    return db
 
 
 def _ticket_counts(events: list[dict[str, Any]]) -> tuple[int, int]:
@@ -33,46 +29,55 @@ def create_app(repo_root: Path) -> FastAPI:
     template_path = Path(__file__).parent / "templates" / "index.html"
     template_html = template_path.read_text(encoding="utf-8")
 
-    app = FastAPI(title="cmcs dashboard")
+    db: Database | None = None
+
+    def _database() -> Database:
+        nonlocal db
+        if db is None:
+            db = Database(db_path)
+            db.initialize()
+        return db
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        nonlocal db
+        _database()
+        try:
+            yield
+        finally:
+            if db is not None:
+                db.close()
+                db = None
+
+    app = FastAPI(title="cmcs dashboard", lifespan=lifespan)
 
     @app.get("/api/health")
-    def health() -> dict[str, str]:
+    async def health() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.get("/api/worktrees")
-    def worktrees() -> list[dict[str, Any]]:
-        db = _open_db(db_path)
-        try:
-            return db.list_worktrees()
-        finally:
-            db.close()
+    async def worktrees() -> list[dict[str, Any]]:
+        return _database().list_worktrees()
 
     @app.get("/api/runs")
-    def runs() -> list[dict[str, Any]]:
-        db = _open_db(db_path)
-        try:
-            enriched: list[dict[str, Any]] = []
-            for run in db.all_runs():
-                events = db.get_events(int(run["id"]))
-                tickets_done, tickets_total = _ticket_counts(events)
-                row = dict(run)
-                row["tickets_done"] = tickets_done
-                row["tickets_total"] = tickets_total
-                enriched.append(row)
-            return enriched
-        finally:
-            db.close()
+    async def runs() -> list[dict[str, Any]]:
+        dashboard_db = _database()
+        enriched: list[dict[str, Any]] = []
+        for run in dashboard_db.all_runs():
+            events = dashboard_db.get_events(int(run["id"]))
+            tickets_done, tickets_total = _ticket_counts(events)
+            row = dict(run)
+            row["tickets_done"] = tickets_done
+            row["tickets_total"] = tickets_total
+            enriched.append(row)
+        return enriched
 
     @app.get("/api/runs/{run_id}/events")
-    def run_events(run_id: int) -> list[dict[str, Any]]:
-        db = _open_db(db_path)
-        try:
-            return db.get_events(run_id)
-        finally:
-            db.close()
+    async def run_events(run_id: int) -> list[dict[str, Any]]:
+        return _database().get_events(run_id)
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> HTMLResponse:
+    async def index() -> HTMLResponse:
         return HTMLResponse(content=template_html)
 
     return app

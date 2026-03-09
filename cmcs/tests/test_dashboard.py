@@ -10,7 +10,7 @@ from cmcs.dashboard.app import create_app
 from cmcs.db import Database
 
 
-def _make_test_client(tmp_path: Path) -> TestClient:
+def _seed_dashboard_db(tmp_path: Path) -> None:
     cmcs_dir = tmp_path / ".cmcs"
     cmcs_dir.mkdir()
 
@@ -31,20 +31,19 @@ def _make_test_client(tmp_path: Path) -> TestClient:
     db.finish_run(run_id, "completed")
     db.close()
 
-    app = create_app(tmp_path)
-    return TestClient(app)
-
 
 def test_health(tmp_path: Path) -> None:
-    test_client = _make_test_client(tmp_path)
-    response = test_client.get("/api/health")
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
 def test_worktrees(tmp_path: Path) -> None:
-    test_client = _make_test_client(tmp_path)
-    response = test_client.get("/api/worktrees")
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/worktrees")
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
@@ -52,8 +51,9 @@ def test_worktrees(tmp_path: Path) -> None:
 
 
 def test_runs(tmp_path: Path) -> None:
-    test_client = _make_test_client(tmp_path)
-    response = test_client.get("/api/runs")
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/runs")
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 1
@@ -63,8 +63,9 @@ def test_runs(tmp_path: Path) -> None:
 
 
 def test_run_events(tmp_path: Path) -> None:
-    test_client = _make_test_client(tmp_path)
-    response = test_client.get("/api/runs/1/events")
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/api/runs/1/events")
     assert response.status_code == 200
     payload = response.json()
     assert len(payload) == 2
@@ -74,7 +75,8 @@ def test_run_events(tmp_path: Path) -> None:
 
 
 def test_index_page(tmp_path: Path) -> None:
-    test_client = _make_test_client(tmp_path)
-    response = test_client.get("/")
+    _seed_dashboard_db(tmp_path)
+    with TestClient(create_app(tmp_path)) as test_client:
+        response = test_client.get("/")
     assert response.status_code == 200
     assert "cmcs" in response.text.lower()

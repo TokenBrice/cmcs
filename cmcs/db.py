@@ -93,6 +93,14 @@ class Database:
         self._conn.commit()
         return int(cursor.lastrowid)
 
+    def update_worker_pid(self, run_id: int, pid: int) -> None:
+        """Update the worker PID for a run."""
+        self._conn.execute(
+            "UPDATE runs SET worker_pid = ? WHERE id = ?",
+            (pid, run_id),
+        )
+        self._conn.commit()
+
     def get_run(self, run_id: int) -> Optional[dict[str, Any]]:
         """Fetch a run by ID."""
         row = self._conn.execute("SELECT * FROM runs WHERE id = ?", (run_id,)).fetchone()

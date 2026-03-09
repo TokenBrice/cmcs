@@ -8,7 +8,13 @@ import pytest
 
 from cmcs.config import CmcsConfig
 from cmcs.db import Database
-from cmcs.runner import _build_codex_args, _run_single_ticket, build_prompt, recover_orphans
+from cmcs.runner import (
+    _build_codex_args,
+    _run_single_ticket,
+    build_prompt,
+    recover_orphans,
+    run_ticket_flow,
+)
 from cmcs.tickets import Ticket, discover_tickets, parse_ticket
 
 SAMPLE_TICKET = """---
@@ -120,6 +126,53 @@ def test_recover_orphans_skips_alive_pids(tmp_path) -> None:
     assert recovered == []
     assert run is not None
     assert run["status"] == "running"
+
+
+def test_run_records_subprocess_pid(tmp_path, monkeypatch) -> None:
+    """run_ticket_flow should store the spawned codex subprocess PID."""
+    import asyncio
+    import stat
+
+    tickets_dir = tmp_path / ".cmcs" / "tickets"
+    tickets_dir.mkdir(parents=True, exist_ok=True)
+    (tickets_dir / "TICKET-001.md").write_text(
+        "---\ntitle: test\ndone: false\n---\nDo nothing\n",
+        encoding="utf-8",
+    )
+
+    codex_script = tmp_path / "codex"
+    codex_script.write_text(
+        (
+            "#!/usr/bin/env python3\n"
+            "import re\n"
+            "import sys\n"
+            "from pathlib import Path\n"
+            "prompt = sys.argv[-1]\n"
+            "match = re.search(r'update the ticket file at (.+?):', prompt, flags=re.IGNORECASE)\n"
+            "if match is None:\n"
+            "    raise SystemExit('ticket path not found in prompt')\n"
+            "ticket_path = Path(match.group(1).strip())\n"
+            "content = ticket_path.read_text(encoding='utf-8')\n"
+            "ticket_path.write_text(content.replace('done: false', 'done: true', 1), encoding='utf-8')\n"
+        ),
+        encoding="utf-8",
+    )
+    codex_script.chmod(codex_script.stat().st_mode | stat.S_IEXEC)
+
+    monkeypatch.setenv("PATH", f"{tmp_path}:{os.environ.get('PATH', '')}")
+
+    db = Database(tmp_path / ".cmcs" / "cmcs.db")
+    db.initialize()
+    try:
+        db.register_worktree(str(tmp_path), "test")
+        run_id = asyncio.run(run_ticket_flow(tmp_path, CmcsConfig(), db))
+        run_record = db.get_run(run_id)
+    finally:
+        db.close()
+
+    assert run_record is not None
+    assert run_record["worker_pid"] is not None
+    assert run_record["worker_pid"] != os.getpid()
 
 
 @pytest.mark.asyncio
